@@ -47,6 +47,12 @@ defmodule Fishbowl.World.Engine do
   @event_log_length 30
   @record_threshold %{plant: 20, herbivore: 6, predator: 3}
 
+  # Territory: how far (Manhattan distance) an animal can stray from its
+  # home tile before an aimless wander turns into "head back." A chase can
+  # still pull it further than this — homing only applies when there's no
+  # prey in sight to chase.
+  @territory_radius 8
+
   def new(width, height) do
     tiles =
       for x <- 0..(width - 1), y <- 0..(height - 1), into: %{} do
@@ -512,13 +518,30 @@ defmodule Fishbowl.World.Engine do
         finish(%{entity | x: x, y: y, action: moved_action(entity, x, y)}, state, stats, [])
 
       nil ->
-        {x, y} = random_step(state, entity.x, entity.y, entity.kind)
+        {x, y} = wander(state, entity)
         finish(%{entity | x: x, y: y, action: moved_action(entity, x, y)}, state, stats, [])
     end
   end
 
   defp moved_action(entity, x, y) when entity.x == x and entity.y == y, do: :idle
   defp moved_action(_entity, _x, _y), do: :moved
+
+  # No prey in sight: drift home if strayed too far (a hunt with no kill can
+  # pull an animal arbitrarily far — this is what brings it back after),
+  # otherwise just wander. Entities backfilled from a pre-homing snapshot
+  # have home: nil and fall back to pure wandering.
+  defp wander(state, %{home: nil} = entity),
+    do: random_step(state, entity.x, entity.y, entity.kind)
+
+  defp wander(state, entity) do
+    {hx, hy} = entity.home
+
+    if dist(entity, %{x: hx, y: hy}) > @territory_radius do
+      step_toward(state, entity.x, entity.y, hx, hy, entity.kind)
+    else
+      random_step(state, entity.x, entity.y, entity.kind)
+    end
+  end
 
   defp finish(entity, state, stats, damage) do
     spawn =

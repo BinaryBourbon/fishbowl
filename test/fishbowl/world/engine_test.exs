@@ -276,6 +276,49 @@ defmodule Fishbowl.World.EngineTest do
     assert %{fertilized: false} = state.tiles[{1, 1}]
   end
 
+  test "release/4 sets a home for the released animal, at its release position" do
+    state = Engine.new(5, 5) |> Engine.release(:predator, 2, 3)
+    [entity] = Map.values(state.entities)
+    assert entity.home == {2, 3}
+  end
+
+  test "an animal drifts back toward home once it strays past the territory radius" do
+    # This is a test of the homing bound, not predation — a chase can
+    # legitimately pull an animal further than the territory radius (the
+    # moduledoc for wander/2 says so). Herbivore immigration is
+    # unconditional (floor 4, starting from 0), so over 40 ticks one would
+    # otherwise show up and get chased. Strip anything but the tracked
+    # predator after every tick so it never has prey in sight.
+    state = Engine.new(50, 50) |> Engine.release(:predator, 25, 25)
+    [id] = Map.keys(state.entities)
+
+    {_state, max_observed} =
+      Enum.reduce(1..40, {state, 0}, fn _, {acc, max_dist} ->
+        acc = Engine.tick(acc)
+        acc = %{acc | entities: Map.take(acc.entities, [id])}
+
+        case Map.get(acc.entities, id) do
+          # Well within the ~50-tick starvation window, but don't crash if
+          # it somehow didn't survive.
+          nil -> {acc, max_dist}
+          entity -> {acc, max(max_dist, abs(entity.x - 25) + abs(entity.y - 25))}
+        end
+      end)
+
+    # territory radius (8) plus a buffer for one diagonal overshoot step
+    # before the next tick's correction kicks in.
+    assert max_observed <= 10
+  end
+
+  test "tick/1 tolerates entities with no home (pre-homing snapshots)" do
+    state = Engine.new(10, 10) |> Engine.release(:predator, 5, 5)
+    [id] = Map.keys(state.entities)
+    state = %{state | entities: %{id => %{state.entities[id] | home: nil}}}
+
+    state = Engine.tick(state)
+    assert state.tick == 1
+  end
+
   test "release/4 refuses to place a herbivore on an already-occupied tile" do
     state = Engine.new(5, 5) |> Engine.release(:herbivore, 2, 2)
     assert Enum.count(state.entities) == 1

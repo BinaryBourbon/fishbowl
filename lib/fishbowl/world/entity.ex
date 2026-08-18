@@ -6,7 +6,7 @@ defmodule Fishbowl.World.Entity do
   """
 
   @derive Jason.Encoder
-  defstruct [:id, :kind, :x, :y, :energy, :age, :cooldown, action: :spawned]
+  defstruct [:id, :kind, :x, :y, :energy, :age, :cooldown, action: :spawned, home: nil]
 
   @type kind :: :plant | :herbivore | :predator
   @type action :: :spawned | :idle | :moved | :ate | :reproduced
@@ -18,7 +18,8 @@ defmodule Fishbowl.World.Entity do
           energy: float(),
           age: non_neg_integer(),
           cooldown: non_neg_integer(),
-          action: action()
+          action: action(),
+          home: nil | {integer(), integer()}
         }
 
   @species %{
@@ -61,9 +62,16 @@ defmodule Fishbowl.World.Entity do
       y: y,
       energy: stats.start_energy,
       age: 0,
-      cooldown: 0
+      cooldown: 0,
+      home: home_for(kind, x, y)
     }
   end
+
+  # Where it was born/released/immigrated — animals drift back here when
+  # not actively hunting, which is what turns "pure random walk" into
+  # loose territories/packs. Plants don't move, so no home to speak of.
+  defp home_for(kind, x, y) when kind in [:herbivore, :predator], do: {x, y}
+  defp home_for(_kind, _x, _y), do: nil
 
   def alive?(%__MODULE__{energy: energy}), do: energy > 0
 
