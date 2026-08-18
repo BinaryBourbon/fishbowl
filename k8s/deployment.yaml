@@ -26,7 +26,7 @@ spec:
         fsGroup: 65534
       containers:
         - name: fishbowl
-          image: ghcr.io/binarybourbon/fishbowl:53b4fe82085e4b733a53f7c7967dab3c97a26569
+          image: ghcr.io/binarybourbon/fishbowl:e45d18cb6956955bcf7a3d19d73299608dcf6f21
           ports:
             - containerPort: 4000
           env:
