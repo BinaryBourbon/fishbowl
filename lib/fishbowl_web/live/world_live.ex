@@ -61,7 +61,8 @@ defmodule FishbowlWeb.WorldLive do
         height: World.height(),
         tools: @tools,
         presences: list_presences(),
-        history: []
+        history: [],
+        show_rules: false
       )
       |> assign_world(world)
 
@@ -78,6 +79,10 @@ defmodule FishbowlWeb.WorldLive do
   @impl true
   def handle_event("select_tool", %{"tool" => tool}, socket) do
     {:noreply, assign(socket, tool: String.to_existing_atom(tool), scoop_from: nil)}
+  end
+
+  def handle_event("toggle_rules", _params, socket) do
+    {:noreply, update(socket, :show_rules, &(!&1))}
   end
 
   def handle_event("cell_click", %{"x" => xs, "y" => ys}, socket) do
@@ -244,7 +249,18 @@ defmodule FishbowlWeb.WorldLive do
           <span :for={p <- @presences} class="dot" style={"background:#{p.color}"}></span>
           <span class="count">{length(@presences)} here</span>
         </div>
+        <button
+          type="button"
+          class={"tool help #{if @show_rules, do: "active"}"}
+          phx-click="toggle_rules"
+          aria-expanded={to_string(@show_rules)}
+          aria-controls="rules"
+        >
+          <span class="icon">?</span> How it works
+        </button>
       </header>
+
+      <.rules :if={@show_rules} />
 
       <div
         class="board"
@@ -274,6 +290,90 @@ defmodule FishbowlWeb.WorldLive do
         </div>
       </footer>
     </div>
+    """
+  end
+
+  # Rules text is written against the constants in Engine / Entity / Tile.
+  # If you tune the simulation, update these numbers too.
+  defp rules(assigns) do
+    ~H"""
+    <section id="rules" class="rules">
+      <div class="rules-col">
+        <h2>The world</h2>
+        <p>
+          A shared garden that ticks twice a second for everyone connected. Every tile is soil
+          with a <strong>fertility</strong> from 0 to 1 (darker = drier, greener = richer).
+          Fertility slowly dries out each tick unless someone waters it. Rocks are impassable —
+          nothing can grow on or walk through them.
+        </p>
+        <p>
+          The world is saved to disk every 20 ticks, so it survives restarts and deploys.
+          What you do here stays here.
+        </p>
+
+        <h2>Life</h2>
+        <ul>
+          <li>
+            <strong>🌱 Plants</strong>
+            gain energy each tick in proportion to their tile's fertility. Once a plant has
+            enough energy it may seed a neighbouring tile — the richer the soil, the more
+            likely. Plants never move and never die on their own; they only get eaten.
+          </li>
+          <li>
+            <strong>🐇 Rabbits</strong>
+            burn energy every tick and starve at zero. They can see 6 tiles, walk toward the
+            nearest plant, and take a bite when they're standing on it. Full rabbits reproduce
+            into a free neighbouring tile, spending half their energy.
+          </li>
+          <li>
+            <strong>🦊 Foxes</strong>
+            work the same way but hunt rabbits, burn energy faster, and bite harder. Bites
+            deal damage — a rabbit that runs out of energy is gone.
+          </li>
+        </ul>
+        <p>
+          When a species drops below a small floor (15 plants, 4 rabbits, 2 foxes) there is a
+          chance each tick that one wanders in from outside the grid, so an extinction is never
+          permanent — but it will feel like one for a while.
+        </p>
+      </div>
+
+      <div class="rules-col">
+        <h2>Tools</h2>
+        <ul>
+          <li>
+            <strong>🌱 Seed</strong> — plant on any empty soil tile. It's tinted with your colour.
+          </li>
+          <li>
+            <strong>💧 Water</strong> — raise a tile's fertility (up to 1.0). Wears off over time.
+          </li>
+          <li>
+            <strong>🪨 Rock</strong>
+            — turn a tile to rock, evicting whatever was there. Click again to remove.
+          </li>
+          <li><strong>🤲 Scoop</strong> — click a creature or plant, then click where to drop it.</li>
+          <li>
+            <strong>🐇 / 🦊 Release</strong>
+            — drop a rabbit or fox on a tile to restock after a die-off.
+          </li>
+        </ul>
+
+        <h2>Reading the board</h2>
+        <ul>
+          <li>✨ just spawned or was released</li>
+          <li>💗 just reproduced</li>
+          <li>🍴 just ate</li>
+          <li>A red flash means something got bitten there.</li>
+        </ul>
+        <p>
+          The graph below the board tracks <span class="k plant">plants</span>,
+          <span class="k herbivore">rabbits</span>
+          and <span class="k predator">foxes</span>
+          over the last minute or so. Boom-and-bust
+          cycles are the point — try to keep all three alive.
+        </p>
+      </div>
+    </section>
     """
   end
 
