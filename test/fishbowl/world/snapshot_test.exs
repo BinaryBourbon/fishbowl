@@ -1,7 +1,7 @@
 defmodule Fishbowl.World.SnapshotTest do
   use ExUnit.Case, async: false
 
-  alias Fishbowl.World.{Engine, Snapshot}
+  alias Fishbowl.World.{Engine, Entity, Snapshot}
 
   setup do
     path =
@@ -30,6 +30,23 @@ defmodule Fishbowl.World.SnapshotTest do
     assert :ok = Snapshot.save(state)
     assert {:ok, loaded} = Snapshot.load()
     assert loaded == state
+  end
+
+  test "load/0 backfills Entity fields added after the snapshot was written", %{path: path} do
+    state = Engine.new(5, 5) |> Engine.plant_seed(1, 1, "alice")
+    [{id, entity}] = Map.to_list(state.entities)
+
+    # Simulate a snapshot from an older build whose Entity had no :action key.
+    old_entity =
+      entity |> Map.from_struct() |> Map.delete(:action) |> Map.put(:__struct__, Entity)
+
+    File.write!(path, :erlang.term_to_binary(%{state | entities: %{id => old_entity}}))
+
+    assert {:ok, loaded} = Snapshot.load()
+    assert %Entity{action: :spawned} = loaded.entities[id]
+
+    # And the migrated world must actually tick.
+    assert %{tick: 1} = Engine.tick(loaded)
   end
 
   test "load/0 returns :error when no snapshot exists yet" do
