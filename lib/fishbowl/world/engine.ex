@@ -40,23 +40,46 @@ defmodule Fishbowl.World.Engine do
   @min_daylight_growth 0.4
   @max_daylight_growth 1.6
 
+  # Event log: notable moments worth surfacing next to the raw population
+  # numbers — an extinction, a fresh population record, a storm starting.
+  # Records only log once a species is thriving, not the trivial "record: 1"
+  # the very first time one exists.
+  @event_log_length 30
+  @record_threshold %{plant: 20, herbivore: 6, predator: 3}
+
   def new(width, height) do
     tiles =
       for x <- 0..(width - 1), y <- 0..(height - 1), into: %{} do
         {{x, y}, %Tile{}}
       end
 
-    %{width: width, height: height, tick: 0, tiles: tiles, entities: %{}, weather: nil}
+    %{
+      width: width,
+      height: height,
+      tick: 0,
+      tiles: tiles,
+      entities: %{},
+      weather: nil,
+      events: [],
+      records: %{}
+    }
   end
 
   def tick(state) do
+    pre_counts = species_counts(state.entities)
+    pre_raining? = weather(state) != nil
+
     state
     |> Map.update!(:tick, &(&1 + 1))
     |> decay_tiles()
     |> tick_entities()
     |> immigrate()
     |> tick_weather()
+    |> track_events(pre_counts, pre_raining?)
   end
+
+  @doc "Most recent notable moments first — `%{tick:, icon:, text:}` maps, newest first."
+  def events(state), do: Map.get(state, :events, [])
 
   @doc "0.0 (deepest night) to 1.0 (brightest noon), oscillating over @day_length_ticks ticks."
   def daylight(state) do
@@ -275,6 +298,75 @@ defmodule Fishbowl.World.Engine do
       Map.update!(acc, e.kind, &(&1 + 1))
     end)
   end
+
+  defp track_events(state, pre_counts, pre_raining?) do
+    post_counts = species_counts(state.entities)
+    records = Map.get(state, :records, %{})
+
+    {records, species_events} =
+      Enum.reduce([:plant, :herbivore, :predator], {records, []}, fn kind, {records, events} ->
+        count = Map.get(post_counts, kind, 0)
+        prev = Map.get(pre_counts, kind, 0)
+        record = Map.get(records, kind, 0)
+
+        events =
+          cond do
+            count == 0 and prev > 0 ->
+              [
+                event(
+                  state.tick,
+                  "💀",
+                  "#{species_emoji(kind)} #{species_name(kind)} went extinct"
+                )
+                | events
+              ]
+
+            # record > 0 excludes the very first tick a species is ever
+            # seen — otherwise the initial seed population "sets a record"
+            # on every boot, which isn't a milestone, just the world
+            # starting (and would repeat identically after every restart).
+            record > 0 and count > record and count >= @record_threshold[kind] ->
+              [
+                event(
+                  state.tick,
+                  "🏆",
+                  "population record: #{count} #{species_emoji(kind)} #{species_name(kind)}"
+                )
+                | events
+              ]
+
+            true ->
+              events
+          end
+
+        {Map.put(records, kind, max(record, count)), events}
+      end)
+
+    rain_events =
+      if weather(state) != nil and not pre_raining? do
+        [event(state.tick, "🌧️", "a storm rolled in")]
+      else
+        []
+      end
+
+    events =
+      (rain_events ++ species_events ++ Map.get(state, :events, []))
+      |> Enum.take(@event_log_length)
+
+    state
+    |> Map.put(:records, records)
+    |> Map.put(:events, events)
+  end
+
+  defp event(tick, icon, text), do: %{tick: tick, icon: icon, text: text}
+
+  defp species_emoji(:plant), do: "🌱"
+  defp species_emoji(:herbivore), do: "🐇"
+  defp species_emoji(:predator), do: "🦊"
+
+  defp species_name(:plant), do: "plants"
+  defp species_name(:herbivore), do: "herbivores"
+  defp species_name(:predator), do: "predators"
 
   defp random_free_tile(state, kind, attempts \\ 20)
   defp random_free_tile(_state, _kind, 0), do: nil

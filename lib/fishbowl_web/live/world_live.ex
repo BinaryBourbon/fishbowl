@@ -311,6 +311,14 @@ defmodule FishbowlWeb.WorldLive do
           <span class="tick">tick {@world.tick}</span>
         </div>
       </footer>
+
+      <ul class="event-log">
+        <li :for={e <- Engine.events(@world)}>
+          <span class="icon">{e.icon}</span> {e.text}
+          <span class="event-tick">t{e.tick}</span>
+        </li>
+        <li :if={Engine.events(@world) == []} class="empty">nothing notable yet</li>
+      </ul>
     </div>
     """
   end

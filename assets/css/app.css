@@ -367,3 +367,33 @@
   margin-left: auto;
   color: #a8a29e;
 }
+
+.event-log {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  max-height: 8rem;
+  overflow-y: auto;
+  background: #fafaf9;
+  border: 1px solid #e7e5e4;
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+  color: #44403c;
+}
+
+.event-log li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0;
+}
+
+.event-log li.empty {
+  color: #a8a29e;
+}
+
+.event-log .event-tick {
+  margin-left: auto;
+  color: #a8a29e;
+  font-size: 0.75rem;
+}

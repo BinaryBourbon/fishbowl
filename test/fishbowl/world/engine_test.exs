@@ -143,6 +143,87 @@ defmodule Fishbowl.World.EngineTest do
     assert connected?(tiles)
   end
 
+  test "events/1 logs an extinction when a thriving species drops to zero" do
+    # Immigration runs right after death in the same tick and could refill
+    # the population (~15% chance) before track_events compares pre/post
+    # counts, masking a real extinction as "stayed at 1." Rather than fight
+    # that structurally — any free tile anywhere satisfies immigration, so
+    # there's no cheap way to guarantee it fails — repeat the scenario a
+    # few times; failure requires the same ~15% coincidence every time.
+    result =
+      Enum.find(1..5, fn _ ->
+        state = Engine.new(5, 5) |> Engine.release(:predator, 1, 1)
+        [id] = Map.keys(state.entities)
+        state = %{state | entities: %{id => %{state.entities[id] | energy: 0.01}}}
+        state = Engine.tick(state)
+        Enum.any?(Engine.events(state), &(&1.text =~ "predators went extinct"))
+      end)
+
+    assert result
+  end
+
+  test "events/1 logs a population record once a species crosses its threshold" do
+    state = Engine.new(10, 10)
+    state = Enum.reduce(1..6, state, fn i, acc -> Engine.release(acc, :predator, i, 0) end)
+
+    # First tick just establishes the baseline (6) — the initial seed
+    # population isn't itself a "record," see the record > 0 guard.
+    state = Engine.tick(state)
+    refute Enum.any?(Engine.events(state), &(&1.text =~ "population record"))
+
+    # Far from the original row: predators wander at most one tile per
+    # tick, so nothing from the (1,0)-(6,0) group could already be sitting
+    # here and blocking the release under the same-kind exclusivity rule.
+    state = state |> Engine.release(:predator, 9, 9) |> Engine.tick()
+
+    assert Enum.any?(Engine.events(state), &(&1.text =~ "population record: 7"))
+  end
+
+  test "events/1 does not log a record below the species' threshold" do
+    state = Engine.new(10, 10) |> Engine.release(:predator, 1, 1)
+    state = Engine.tick(state)
+
+    refute Enum.any?(Engine.events(state), &(&1.text =~ "population record"))
+  end
+
+  test "events/1 logs when rain starts" do
+    state = Engine.new(20, 20)
+
+    state =
+      Enum.reduce_while(1..300, state, fn _, acc ->
+        acc = Engine.tick(acc)
+        if Engine.weather(acc), do: {:halt, acc}, else: {:cont, acc}
+      end)
+
+    assert Enum.any?(Engine.events(state), &(&1.text == "a storm rolled in"))
+  end
+
+  test "events/1 is capped and newest-first" do
+    state = Engine.new(15, 15)
+
+    state =
+      Enum.reduce(1..40, state, fn i, acc ->
+        acc
+        |> Engine.release(:predator, rem(i, 15), div(i, 15))
+        |> Engine.tick()
+      end)
+
+    events = Engine.events(state)
+    assert length(events) <= 30
+    ticks = Enum.map(events, & &1.tick)
+    assert ticks == Enum.sort(ticks, :desc)
+  end
+
+  test "tick/1 tolerates state persisted before events/records existed" do
+    state = Engine.new(5, 5) |> Map.delete(:events) |> Map.delete(:records)
+    state = Engine.tick(state)
+
+    # Not asserting events == [] — rain has its own small per-tick chance
+    # and can legitimately log "a storm rolled in" here. The real thing
+    # under test is that missing :events/:records don't raise.
+    assert is_list(Engine.events(state))
+  end
+
   test "daylight/1 oscillates smoothly between 0.0 and 1.0" do
     state = Engine.new(5, 5)
 
