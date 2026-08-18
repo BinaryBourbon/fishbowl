@@ -29,6 +29,7 @@ defmodule Fishbowl.World do
   def get_state, do: GenServer.call(__MODULE__, :get_state)
 
   def plant_seed(x, y, player_id), do: GenServer.cast(__MODULE__, {:plant_seed, x, y, player_id})
+  def release(kind, x, y), do: GenServer.cast(__MODULE__, {:release, kind, x, y})
   def water(x, y), do: GenServer.cast(__MODULE__, {:water, x, y})
   def place_rock(x, y), do: GenServer.cast(__MODULE__, {:place_rock, x, y})
   def remove_rock(x, y), do: GenServer.cast(__MODULE__, {:remove_rock, x, y})
@@ -56,6 +57,7 @@ defmodule Fishbowl.World do
     broadcast_mutate(Engine.plant_seed(state, x, y, player_id))
   end
 
+  def handle_cast({:release, kind, x, y}, state), do: broadcast_mutate(Engine.release(state, kind, x, y))
   def handle_cast({:water, x, y}, state), do: broadcast_mutate(Engine.water(state, x, y))
   def handle_cast({:place_rock, x, y}, state), do: broadcast_mutate(Engine.place_rock(state, x, y))
   def handle_cast({:remove_rock, x, y}, state), do: broadcast_mutate(Engine.remove_rock(state, x, y))

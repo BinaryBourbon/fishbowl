@@ -47,6 +47,22 @@ defmodule Fishbowl.World.Engine do
     end
   end
 
+  @doc "Drop a herbivore or predator on a tile — how players restock the ecosystem after a local extinction."
+  def release(state, kind, x, y) when kind in [:herbivore, :predator] do
+    case Map.get(state.tiles, {x, y}) do
+      tile when not is_nil(tile) ->
+        if Tile.passable?(tile) do
+          animal = Entity.new(kind, x, y)
+          %{state | entities: Map.put(state.entities, animal.id, animal)}
+        else
+          state
+        end
+
+      nil ->
+        state
+    end
+  end
+
   def water(state, x, y) do
     Map.update!(state, :tiles, fn tiles ->
       Map.update(tiles, {x, y}, %Tile{}, &Tile.water/1)

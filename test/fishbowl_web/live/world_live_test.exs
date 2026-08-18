@@ -34,4 +34,32 @@ defmodule FishbowlWeb.WorldLiveTest do
     Process.sleep(50)
     assert %{terrain: :rock} = Map.get(Fishbowl.World.get_state().tiles, {10, 10})
   end
+
+  test "herbivore tool releases a rabbit on click", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    view |> element(~s([phx-value-tool="herbivore"])) |> render_click()
+    view |> element(~s([phx-value-x="15"][phx-value-y="15"])) |> render_click()
+
+    Process.sleep(50)
+    state = Fishbowl.World.get_state()
+    assert Enum.any?(state.entities, fn {_id, e} -> e.kind == :herbivore and e.x == 15 and e.y == 15 end)
+  end
+
+  test "predator tool releases a fox on click", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    view |> element(~s([phx-value-tool="predator"])) |> render_click()
+    view |> element(~s([phx-value-x="16"][phx-value-y="16"])) |> render_click()
+
+    Process.sleep(50)
+    state = Fishbowl.World.get_state()
+    assert Enum.any?(state.entities, fn {_id, e} -> e.kind == :predator and e.x == 16 and e.y == 16 end)
+  end
+
+  test "grid locks both row and column tracks to the world dimensions", %{conn: conn} do
+    {:ok, _view, html} = live(conn, ~p"/")
+    assert html =~ "grid-template-columns: repeat(60, 1fr)"
+    assert html =~ "grid-template-rows: repeat(40, 1fr)"
+  end
 end

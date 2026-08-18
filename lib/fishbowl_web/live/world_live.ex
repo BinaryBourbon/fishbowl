@@ -28,7 +28,9 @@ defmodule FishbowlWeb.WorldLive do
     {:seed, "🌱", "Seed"},
     {:water, "💧", "Water"},
     {:rock, "🪨", "Rock"},
-    {:scoop, "🤲", "Scoop"}
+    {:scoop, "🤲", "Scoop"},
+    {:herbivore, "🐇", "Release rabbit"},
+    {:predator, "🦊", "Release fox"}
   ]
 
   @impl true
@@ -101,6 +103,10 @@ defmodule FishbowlWeb.WorldLive do
 
       :scoop ->
         handle_scoop_click(socket, x, y)
+
+      kind when kind in [:herbivore, :predator] ->
+        World.release(kind, x, y)
+        {:noreply, socket}
     end
   end
 
@@ -215,7 +221,7 @@ defmodule FishbowlWeb.WorldLive do
         </div>
       </header>
 
-      <div class="board" style={"grid-template-columns: repeat(#{@width}, 1fr);"}>
+      <div class="board" style={"grid-template-columns: repeat(#{@width}, 1fr); grid-template-rows: repeat(#{@height}, 1fr); aspect-ratio: #{@width} / #{@height};"}>
         <div
           :for={cell <- @cells}
           class={"cell #{cell.terrain} #{if @tool == :scoop and @scoop_from == {cell.x, cell.y}, do: "selected"}"}
