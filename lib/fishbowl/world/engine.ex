@@ -114,7 +114,7 @@ defmodule Fishbowl.World.Engine do
          true <- Tile.passable?(tile),
          false <- occupied_by?(state.entities, key, :plant) do
       plant = Entity.new(:plant, x, y)
-      tiles = Map.update!(state.tiles, key, &%{&1 | tint: player_id})
+      tiles = Map.update!(state.tiles, key, &Tile.tint(&1, player_id))
       %{state | entities: Map.put(state.entities, plant.id, plant), tiles: tiles}
     else
       _ -> state

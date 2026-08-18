@@ -253,6 +253,34 @@ defmodule Fishbowl.World.EngineTest do
     assert day_energy > night_energy
   end
 
+  test "plant_seed/4 tints the tile immediately" do
+    state = Engine.new(5, 5) |> Engine.plant_seed(1, 1, "alice")
+    assert %{tint: "alice"} = state.tiles[{1, 1}]
+  end
+
+  test "a planting tint fades after enough ticks, instead of lasting forever" do
+    state = Engine.new(3, 3) |> Engine.plant_seed(1, 1, "alice")
+
+    state = Enum.reduce(1..299, state, fn _, acc -> Engine.tick(acc) end)
+    assert %{tint: "alice"} = state.tiles[{1, 1}]
+
+    state = Engine.tick(state)
+    assert %{tint: nil} = state.tiles[{1, 1}]
+  end
+
+  test "tiles persisted before tint_ticks_left existed clear their tint on the next tick" do
+    # A tile with a tint but no counter — as a pre-decay snapshot would
+    # look after Snapshot's generic struct backfill fills the new field
+    # with its default (0). Treated as "already expired" rather than
+    # crashing or (worse) tinted forever.
+    state = Engine.new(3, 3)
+    old_tile = %{state.tiles[{1, 1}] | tint: "alice"}
+    state = %{state | tiles: Map.put(state.tiles, {1, 1}, old_tile)}
+
+    state = Engine.tick(state)
+    assert %{tint: nil} = state.tiles[{1, 1}]
+  end
+
   test "add_fertilizer/3 makes a plant on that tile grow faster than an unfertilized one" do
     plain = Engine.new(5, 5) |> Engine.plant_seed(1, 1, "p1")
     fertilized = Engine.new(5, 5) |> Engine.add_fertilizer(1, 1) |> Engine.plant_seed(1, 1, "p1")
