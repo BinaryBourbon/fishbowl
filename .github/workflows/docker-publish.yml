@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
@@ -43,3 +43,17 @@ jobs:
           tags: |
             ${{ steps.image.outputs.name }}:latest
             ${{ steps.image.outputs.name }}:${{ github.sha }}
+
+      # Flux only redeploys on a manifest diff — floating :latest never
+      # triggers a rollout by itself. Pin the manifest to the exact image
+      # this job just built so every push actually reaches the cluster.
+      - name: Pin k8s manifest to this build
+        run: |
+          sed -i "s#image: .*/fishbowl:.*#image: ${{ steps.image.outputs.name }}:${{ github.sha }}#" k8s/deployment.yaml
+          if ! git diff --quiet k8s/deployment.yaml; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add k8s/deployment.yaml
+            git commit -m "chore: pin fishbowl image to ${{ github.sha }} [skip ci]"
+            git push
+          fi

@@ -15,6 +15,13 @@ defmodule Fishbowl.World.Engine do
 
   @directions [{0, -1}, {0, 1}, {-1, 0}, {1, 0}, {-1, -1}, {-1, 1}, {1, -1}, {1, 1}]
 
+  # Below these floors, each tick has a chance to immigrate one individual —
+  # a trickle from "outside the grid" so a local extinction (very much
+  # intended as emergent content) doesn't leave the world permanently dead
+  # when no one's around to replant it.
+  @immigration_floor %{plant: 15, herbivore: 4, predator: 2}
+  @immigration_chance 0.15
+
   def new(width, height) do
     tiles =
       for x <- 0..(width - 1), y <- 0..(height - 1), into: %{} do
@@ -29,6 +36,7 @@ defmodule Fishbowl.World.Engine do
     |> Map.update!(:tick, &(&1 + 1))
     |> decay_tiles()
     |> tick_entities()
+    |> immigrate()
   end
 
   # --- Player actions -------------------------------------------------
@@ -110,6 +118,45 @@ defmodule Fishbowl.World.Engine do
       end)
 
     %{state | tiles: tiles}
+  end
+
+  defp immigrate(state) do
+    counts = species_counts(state.entities)
+
+    Enum.reduce([:plant, :herbivore, :predator], state, fn kind, acc ->
+      if Map.get(counts, kind, 0) < @immigration_floor[kind] and :rand.uniform() < @immigration_chance do
+        case random_free_tile(acc, kind) do
+          nil ->
+            acc
+
+          {x, y} ->
+            immigrant = Entity.new(kind, x, y)
+            %{acc | entities: Map.put(acc.entities, immigrant.id, immigrant)}
+        end
+      else
+        acc
+      end
+    end)
+  end
+
+  defp species_counts(entities) do
+    Enum.reduce(entities, %{plant: 0, herbivore: 0, predator: 0}, fn {_id, e}, acc ->
+      Map.update!(acc, e.kind, &(&1 + 1))
+    end)
+  end
+
+  defp random_free_tile(state, kind, attempts \\ 20)
+  defp random_free_tile(_state, _kind, 0), do: nil
+
+  defp random_free_tile(state, kind, attempts) do
+    x = :rand.uniform(state.width) - 1
+    y = :rand.uniform(state.height) - 1
+
+    if passable(state, x, y) and not occupied_by?(state.entities, {x, y}, kind) do
+      {x, y}
+    else
+      random_free_tile(state, kind, attempts - 1)
+    end
   end
 
   defp tick_entities(state) do
