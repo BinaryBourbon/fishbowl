@@ -5,6 +5,9 @@ metadata:
   namespace: default
   labels:
     app: fishbowl
+  annotations:
+    # Restart when Infisical rotates a key (SECRET_KEY_BASE is read at boot).
+    secrets.infisical.com/auto-reload: "true"
 spec:
   # The world lives in a single in-memory GenServer — do not scale beyond 1
   # replica, that would fork the ecosystem into divergent copies.
