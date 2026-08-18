@@ -73,4 +73,15 @@ defmodule FishbowlWeb.WorldLiveTest do
     assert html =~ "grid-template-columns: repeat(60, 1fr)"
     assert html =~ "grid-template-rows: repeat(40, 1fr)"
   end
+
+  test "rules panel is hidden until toggled", %{conn: conn} do
+    {:ok, view, html} = live(conn, "/")
+    refute html =~ "The world"
+
+    html = view |> element("button", "How it works") |> render_click()
+    assert html =~ "The world"
+    assert html =~ "Foxes"
+
+    refute view |> element("button", "How it works") |> render_click() =~ "The world"
+  end
 end
