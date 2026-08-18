@@ -166,6 +166,73 @@ defmodule Fishbowl.World.EngineTest do
     assert %{fertilized: false} = state.tiles[{1, 1}]
   end
 
+  test "release/4 refuses to place a herbivore on an already-occupied tile" do
+    state = Engine.new(5, 5) |> Engine.release(:herbivore, 2, 2)
+    assert Enum.count(state.entities) == 1
+
+    state = Engine.release(state, :herbivore, 2, 2)
+    assert Enum.count(state.entities) == 1
+  end
+
+  test "release/4 allows different kinds to share a tile" do
+    state =
+      Engine.new(5, 5) |> Engine.release(:herbivore, 2, 2) |> Engine.release(:predator, 2, 2)
+
+    assert Enum.count(state.entities) == 2
+  end
+
+  test "scoop/4 refuses to drop onto a tile already holding the same kind" do
+    state =
+      Engine.new(5, 5)
+      |> Engine.release(:herbivore, 1, 1)
+      |> Engine.release(:herbivore, 2, 2)
+
+    state = Engine.scoop(state, 1, 1, 2, 2)
+
+    positions = state.entities |> Map.values() |> Enum.map(&{&1.x, &1.y}) |> Enum.sort()
+    assert positions == [{1, 1}, {2, 2}]
+  end
+
+  test "no two entities of the same kind ever share a tile, across a long run" do
+    state =
+      Engine.new(30, 30)
+      |> scatter(:plant, 60)
+      |> scatter(:herbivore, 25)
+      |> scatter(:predator, 8)
+
+    Enum.reduce(1..200, state, fn tick, acc ->
+      acc = Engine.tick(acc)
+      assert_no_same_kind_collisions(acc, tick)
+      acc
+    end)
+  end
+
+  defp scatter(state, :plant, count) do
+    Enum.reduce(1..count, state, fn _, acc ->
+      x = :rand.uniform(state.width) - 1
+      y = :rand.uniform(state.height) - 1
+      Engine.plant_seed(acc, x, y, "test")
+    end)
+  end
+
+  defp scatter(state, kind, count) do
+    Enum.reduce(1..count, state, fn _, acc ->
+      x = :rand.uniform(state.width) - 1
+      y = :rand.uniform(state.height) - 1
+      Engine.release(acc, kind, x, y)
+    end)
+  end
+
+  defp assert_no_same_kind_collisions(state, tick) do
+    dupes =
+      state.entities
+      |> Map.values()
+      |> Enum.group_by(&{&1.kind, &1.x, &1.y})
+      |> Enum.filter(fn {_key, entities} -> length(entities) > 1 end)
+
+    assert dupes == [], "same-kind collision at tick #{tick}: #{inspect(dupes)}"
+  end
+
   defp plant_energy_at(state, x, y) do
     state.entities
     |> Map.values()

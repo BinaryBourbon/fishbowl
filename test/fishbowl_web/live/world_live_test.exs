@@ -52,9 +52,10 @@ defmodule FishbowlWeb.WorldLiveTest do
   test "herbivore tool releases a rabbit on click", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
     before_count = count_kind(:herbivore)
+    {x, y} = free_tile_for(:herbivore)
 
     view |> element(~s([phx-value-tool="herbivore"])) |> render_click()
-    view |> element(~s([phx-value-x="15"][phx-value-y="15"])) |> render_click()
+    view |> element(~s([phx-value-x="#{x}"][phx-value-y="#{y}"])) |> render_click()
 
     # Count only, not exact position: the world's own tick loop keeps
     # running during tests, and a released animal can wander off its spawn
@@ -67,9 +68,10 @@ defmodule FishbowlWeb.WorldLiveTest do
   test "predator tool releases a fox on click", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
     before_count = count_kind(:predator)
+    {x, y} = free_tile_for(:predator)
 
     view |> element(~s([phx-value-tool="predator"])) |> render_click()
-    view |> element(~s([phx-value-x="16"][phx-value-y="16"])) |> render_click()
+    view |> element(~s([phx-value-x="#{x}"][phx-value-y="#{y}"])) |> render_click()
 
     Process.sleep(50)
     assert count_kind(:predator) > before_count
@@ -79,6 +81,26 @@ defmodule FishbowlWeb.WorldLiveTest do
     Fishbowl.World.get_state().entities
     |> Map.values()
     |> Enum.count(&(&1.kind == kind))
+  end
+
+  # Same-kind tiles are now exclusive (see Engine.occupied_by?/3 usage in
+  # release/4), and this suite runs against the real, continuously-ticking
+  # World singleton — a hardcoded coordinate can legitimately already be
+  # occupied by the time the test runs. Scan for one that genuinely isn't.
+  defp free_tile_for(kind) do
+    world = Fishbowl.World.get_state()
+
+    occupied =
+      world.entities
+      |> Map.values()
+      |> Enum.filter(&(&1.kind == kind))
+      |> MapSet.new(&{&1.x, &1.y})
+
+    Enum.find_value(0..(world.width - 1), fn x ->
+      Enum.find_value(0..(world.height - 1), fn y ->
+        unless MapSet.member?(occupied, {x, y}), do: {x, y}
+      end)
+    end)
   end
 
   test "grid locks both row and column tracks to the world dimensions", %{conn: conn} do

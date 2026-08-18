@@ -78,7 +78,7 @@ defmodule Fishbowl.World.Engine do
   def release(state, kind, x, y) when kind in [:herbivore, :predator] do
     case Map.get(state.tiles, {x, y}) do
       tile when not is_nil(tile) ->
-        if Tile.passable?(tile) do
+        if Tile.passable?(tile) and not occupied_by?(state.entities, {x, y}, kind) do
           animal = Entity.new(kind, x, y)
           %{state | entities: Map.put(state.entities, animal.id, animal)}
         else
@@ -137,8 +137,16 @@ defmodule Fishbowl.World.Engine do
       {nil, _} -> state
       {_entity, nil} -> state
       {_entity, %Tile{terrain: :rock}} -> state
-      {entity, _tile} -> put_entity(state, %{entity | x: to_x, y: to_y})
+      {entity, _tile} -> scoop_to(state, entity, to_x, to_y)
     end
+  end
+
+  defp scoop_to(state, entity, to_x, to_y) do
+    already_there? =
+      {entity.x, entity.y} != {to_x, to_y} and
+        occupied_by?(state.entities, {to_x, to_y}, entity.kind)
+
+    if already_there?, do: state, else: put_entity(state, %{entity | x: to_x, y: to_y})
   end
 
   defp put_entity(state, entity),
@@ -269,8 +277,9 @@ defmodule Fishbowl.World.Engine do
 
     results =
       Enum.map(snapshot, fn {_id, entity} ->
+        fallback = {entity.x, entity.y}
         entity = %{entity | age: entity.age + 1, cooldown: max(entity.cooldown - 1, 0)}
-        step(entity, state, snapshot)
+        Map.put(step(entity, state, snapshot), :fallback, fallback)
       end)
 
     damage_by_id =
@@ -279,9 +288,16 @@ defmodule Fishbowl.World.Engine do
       |> Enum.group_by(fn {id, _amt} -> id end, fn {_id, amt} -> amt end)
       |> Map.new(fn {id, amounts} -> {id, Enum.sum(amounts)} end)
 
+    # step/3 already steers each entity away from tiles the pre-tick
+    # snapshot shows occupied by its own kind, but two movers can still
+    # both target the same tile that was vacant in that snapshot. Losing
+    # that race reverts to `fallback` (the mover's own pre-tick spot),
+    # which is safe by construction: nothing else could have targeted an
+    # occupied tile, so nobody else claims it out from under the mover
+    # that's backing off.
     entities =
-      Enum.reduce(results, %{}, fn %{entity: entity}, acc ->
-        if entity, do: Map.put(acc, entity.id, entity), else: acc
+      Enum.reduce(results, %{}, fn %{entity: entity, fallback: fallback}, acc ->
+        place_entity(acc, entity, fallback)
       end)
 
     entities = apply_damage(entities, damage_by_id)
@@ -289,9 +305,27 @@ defmodule Fishbowl.World.Engine do
     entities =
       results
       |> Enum.flat_map(& &1.spawn)
-      |> Enum.reduce(entities, fn child, acc -> Map.put(acc, child.id, child) end)
+      |> Enum.reduce(entities, fn child, acc -> place_child(acc, child) end)
 
     %{state | entities: entities}
+  end
+
+  defp place_entity(acc, nil, _fallback), do: acc
+
+  defp place_entity(acc, entity, {fx, fy}) do
+    if occupied_by?(acc, {entity.x, entity.y}, entity.kind) do
+      Map.put(acc, entity.id, %{entity | x: fx, y: fy, action: :idle})
+    else
+      Map.put(acc, entity.id, entity)
+    end
+  end
+
+  defp place_child(acc, child) do
+    if occupied_by?(acc, {child.x, child.y}, child.kind) do
+      acc
+    else
+      Map.put(acc, child.id, child)
+    end
   end
 
   defp apply_damage(entities, damage_by_id) do
@@ -361,11 +395,11 @@ defmodule Fishbowl.World.Engine do
         finish(entity, state, stats, [{prey_id, stats.bite}])
 
       {_prey_id, prey} ->
-        {x, y} = step_toward(state, entity.x, entity.y, prey.x, prey.y)
+        {x, y} = step_toward(state, entity.x, entity.y, prey.x, prey.y, entity.kind)
         finish(%{entity | x: x, y: y, action: moved_action(entity, x, y)}, state, stats, [])
 
       nil ->
-        {x, y} = random_step(state, entity.x, entity.y)
+        {x, y} = random_step(state, entity.x, entity.y, entity.kind)
         finish(%{entity | x: x, y: y, action: moved_action(entity, x, y)}, state, stats, [])
     end
   end
@@ -427,13 +461,20 @@ defmodule Fishbowl.World.Engine do
 
   defp dist(%{x: x1, y: y1}, %{x: x2, y: y2}), do: abs(x1 - x2) + abs(y1 - y2)
 
-  defp step_toward(state, x, y, tx, ty) do
+  # `kind` here is the mover's own kind: a herbivore may step onto a tile
+  # with a plant (different kind, that's how it eats) but never onto a tile
+  # already holding another herbivore. Checked against the pre-tick
+  # snapshot, since that's all a single entity's step/3 call can see —
+  # tick_entities' post-hoc placement pass (place_entity/3) is what catches
+  # the rarer case of two movers racing for the same then-vacant tile.
+  defp step_toward(state, x, y, tx, ty, kind) do
     dx = clamp_step(tx - x)
     dy = clamp_step(ty - y)
 
-    case passable(state, x + dx, y + dy) do
-      true -> {x + dx, y + dy}
-      false -> random_step(state, x, y)
+    if free_for?(state, x + dx, y + dy, kind) do
+      {x + dx, y + dy}
+    else
+      random_step(state, x, y, kind)
     end
   end
 
@@ -441,10 +482,10 @@ defmodule Fishbowl.World.Engine do
   defp clamp_step(d) when d < 0, do: -1
   defp clamp_step(_), do: 0
 
-  defp random_step(state, x, y) do
+  defp random_step(state, x, y, kind) do
     @directions
     |> Enum.shuffle()
-    |> Enum.find(nil, fn {dx, dy} -> passable(state, x + dx, y + dy) end)
+    |> Enum.find(nil, fn {dx, dy} -> free_for?(state, x + dx, y + dy, kind) end)
     |> case do
       {dx, dy} -> {x + dx, y + dy}
       nil -> {x, y}
@@ -454,15 +495,15 @@ defmodule Fishbowl.World.Engine do
   defp random_free_neighbor(state, x, y, kind) do
     @directions
     |> Enum.shuffle()
-    |> Enum.find(fn {dx, dy} ->
-      nx = x + dx
-      ny = y + dy
-      passable(state, nx, ny) and not occupied_by?(state.entities, {nx, ny}, kind)
-    end)
+    |> Enum.find(fn {dx, dy} -> free_for?(state, x + dx, y + dy, kind) end)
     |> case do
       {dx, dy} -> {x + dx, y + dy}
       nil -> nil
     end
+  end
+
+  defp free_for?(state, x, y, kind) do
+    passable(state, x, y) and not occupied_by?(state.entities, {x, y}, kind)
   end
 
   defp passable(state, x, y) do
