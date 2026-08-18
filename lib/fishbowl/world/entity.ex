@@ -6,10 +6,21 @@ defmodule Fishbowl.World.Entity do
   """
 
   @derive Jason.Encoder
-  defstruct [:id, :kind, :x, :y, :energy, :age, :cooldown, action: :spawned, home: nil]
+  defstruct [
+    :id,
+    :kind,
+    :x,
+    :y,
+    :energy,
+    :age,
+    :cooldown,
+    action: :spawned,
+    home: nil,
+    poops_left: 0
+  ]
 
   @type kind :: :plant | :herbivore | :predator
-  @type action :: :spawned | :idle | :moved | :ate | :reproduced
+  @type action :: :spawned | :idle | :moved | :ate | :reproduced | :pooped
   @type t :: %__MODULE__{
           id: String.t(),
           kind: kind(),
@@ -19,7 +30,8 @@ defmodule Fishbowl.World.Entity do
           age: non_neg_integer(),
           cooldown: non_neg_integer(),
           action: action(),
-          home: nil | {integer(), integer()}
+          home: nil | {integer(), integer()},
+          poops_left: non_neg_integer()
         }
 
   @species %{
@@ -63,7 +75,8 @@ defmodule Fishbowl.World.Entity do
       energy: stats.start_energy,
       age: 0,
       cooldown: 0,
-      home: home_for(kind, x, y)
+      home: home_for(kind, x, y),
+      poops_left: poops_for(kind)
     }
   end
 
@@ -72,6 +85,12 @@ defmodule Fishbowl.World.Entity do
   # loose territories/packs. Plants don't move, so no home to speak of.
   defp home_for(kind, x, y) when kind in [:herbivore, :predator], do: {x, y}
   defp home_for(_kind, _x, _y), do: nil
+
+  # How many times this individual will fertilize a tile over its
+  # lifetime, at random points (see Engine's poop chance/pass).
+  defp poops_for(:herbivore), do: 1
+  defp poops_for(:predator), do: 2
+  defp poops_for(:plant), do: 0
 
   def alive?(%__MODULE__{energy: energy}), do: energy > 0
 

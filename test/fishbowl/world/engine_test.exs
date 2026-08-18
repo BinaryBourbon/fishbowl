@@ -39,6 +39,9 @@ defmodule Fishbowl.World.EngineTest do
 
     state = Engine.release(state, :predator, 1, 1)
     [predator_id] = Map.keys(state.entities)
+    # Not what this test is about — a poop this tick would correctly (see
+    # pooped_action/1) override the :idle action being asserted below.
+    state = put_in(state.entities[predator_id].poops_left, 0)
 
     state = Engine.tick(state)
     predator = Map.fetch!(state.entities, predator_id)
@@ -302,6 +305,103 @@ defmodule Fishbowl.World.EngineTest do
   test "add_fertilizer/3 is a no-op on a rock tile" do
     state = Engine.new(5, 5) |> Engine.place_rock(1, 1) |> Engine.add_fertilizer(1, 1)
     assert %{fertilized: false} = state.tiles[{1, 1}]
+  end
+
+  test "release/4 sets poops_left based on species (herbivore once, predator twice)" do
+    state =
+      Engine.new(5, 5) |> Engine.release(:herbivore, 1, 1) |> Engine.release(:predator, 2, 2)
+
+    {_id, herbivore} = Enum.find(state.entities, fn {_id, e} -> e.kind == :herbivore end)
+    {_id, predator} = Enum.find(state.entities, fn {_id, e} -> e.kind == :predator end)
+
+    assert herbivore.poops_left == 1
+    assert predator.poops_left == 2
+  end
+
+  test "a herbivore poops exactly once over its lifetime, fertilizing where it stands" do
+    # Immortal energy plus stripping every other entity after each tick —
+    # isolates the poop mechanic from starvation *and* predation. A huge
+    # energy buffer alone isn't enough: unbounded predator population
+    # growth over hundreds of ticks can concentrate enough simultaneous
+    # bites on the one herbivore around to kill it anyway.
+    state = Engine.new(30, 30) |> Engine.release(:herbivore, 15, 15)
+    [id] = Map.keys(state.entities)
+    state = put_in(state.entities[id].energy, 100_000.0)
+    starting_poops = state.entities[id].poops_left
+
+    final_state =
+      Enum.reduce(1..300, state, fn _, acc ->
+        acc = Engine.tick(acc)
+        acc = %{acc | entities: Map.take(acc.entities, [id])}
+        # Also re-pin energy every tick: sitting far above reproduce_energy
+        # makes it reproduce on cooldown, which halves its own energy each
+        # time (finish/4) — left unchecked that still grinds it down to
+        # zero over hundreds of ticks. (Reproducing this often also means
+        # the :pooped action badge sometimes gets pre-empted by :reproduced
+        # the same tick — see pooped_action/1 — so poops_left, not the
+        # action, is the reliable signal here.)
+        put_in(acc.entities[id].energy, 100_000.0)
+      end)
+
+    assert starting_poops == 1
+    assert Map.fetch!(final_state.entities, id).poops_left == 0
+  end
+
+  test "a predator poops exactly twice over its lifetime" do
+    state = Engine.new(30, 30) |> Engine.release(:predator, 15, 15)
+    [id] = Map.keys(state.entities)
+    state = put_in(state.entities[id].energy, 100_000.0)
+    starting_poops = state.entities[id].poops_left
+
+    final_state =
+      Enum.reduce(1..600, state, fn _, acc ->
+        acc = Engine.tick(acc)
+        acc = %{acc | entities: Map.take(acc.entities, [id])}
+        put_in(acc.entities[id].energy, 100_000.0)
+      end)
+
+    assert starting_poops == 2
+    assert Map.fetch!(final_state.entities, id).poops_left == 0
+  end
+
+  test "a pooped-on tile is measurably more fertile afterward" do
+    # Not necessarily the release tile — with nothing to eat (all other
+    # entities stripped), the herbivore wanders locally rather than
+    # standing still, so it may poop somewhere else within its territory.
+    # Track fertility at wherever it actually is the tick it poops.
+    state = Engine.new(30, 30) |> Engine.release(:herbivore, 15, 15)
+    [id] = Map.keys(state.entities)
+    state = put_in(state.entities[id].energy, 100_000.0)
+
+    {_final_state, {before, after_}} =
+      Enum.reduce_while(1..300, {state, nil}, fn _, {acc, _} ->
+        before_entity = Map.fetch!(acc.entities, id)
+        pre_tiles = acc.tiles
+
+        acc = Engine.tick(acc)
+        acc = %{acc | entities: Map.take(acc.entities, [id])}
+        acc = put_in(acc.entities[id].energy, 100_000.0)
+
+        after_entity = Map.fetch!(acc.entities, id)
+
+        if after_entity.poops_left < before_entity.poops_left do
+          pos = {after_entity.x, after_entity.y}
+          {:halt, {acc, {pre_tiles[pos].fertility, acc.tiles[pos].fertility}}}
+        else
+          {:cont, {acc, nil}}
+        end
+      end)
+
+    assert after_ > before
+  end
+
+  test "tick/1 tolerates entities with no poops left (pre-poop snapshots default to 0)" do
+    state = Engine.new(5, 5) |> Engine.release(:herbivore, 1, 1)
+    [id] = Map.keys(state.entities)
+    state = put_in(state.entities[id].poops_left, 0)
+
+    state = Engine.tick(state)
+    assert state.tick == 1
   end
 
   test "release/4 sets a home for the released animal, at its release position" do

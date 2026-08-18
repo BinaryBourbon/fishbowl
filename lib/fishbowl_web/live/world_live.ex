@@ -217,6 +217,7 @@ defmodule FishbowlWeb.WorldLive do
   defp badge(%{action: :spawned}), do: "✨"
   defp badge(%{action: :reproduced}), do: "💗"
   defp badge(%{action: :ate}), do: "🍴"
+  defp badge(%{action: :pooped}), do: "💩"
   defp badge(_), do: nil
 
   defp soil_color(fertility, fertilized?) do

@@ -298,6 +298,14 @@
   animation: cell-fade 400ms ease-out;
 }
 
+.cell.action-pooped {
+  animation: cell-pop 400ms ease-out;
+}
+
+.cell.action-pooped {
+  animation: cell-pop 400ms ease-out;
+}
+
 .cell.raining::before {
   content: "";
   position: absolute;

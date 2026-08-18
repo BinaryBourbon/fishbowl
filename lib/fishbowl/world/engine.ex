@@ -53,6 +53,12 @@ defmodule Fishbowl.World.Engine do
   # prey in sight to chase.
   @territory_radius 8
 
+  # Droppings: each herbivore poops once and each predator twice over its
+  # lifetime (Entity.poops_for/1), at a random point rather than a fixed
+  # age — a small per-tick chance while poops_left > 0. Fertilizes whatever
+  # tile it's standing on the same way rain does.
+  @poop_chance 0.03
+
   def new(width, height) do
     tiles =
       for x <- 0..(width - 1), y <- 0..(height - 1), into: %{} do
@@ -79,6 +85,7 @@ defmodule Fishbowl.World.Engine do
     |> Map.update!(:tick, &(&1 + 1))
     |> decay_tiles()
     |> tick_entities()
+    |> poop()
     |> immigrate()
     |> tick_weather()
     |> track_events(pre_counts, pre_raining?)
@@ -209,6 +216,35 @@ defmodule Fishbowl.World.Engine do
 
     %{state | tiles: tiles}
   end
+
+  defp poop(state) do
+    {entities, tiles} =
+      Enum.reduce(state.entities, {state.entities, state.tiles}, fn {id, entity},
+                                                                    {entities, tiles} ->
+        if entity.kind in [:herbivore, :predator] and entity.poops_left > 0 and
+             :rand.uniform() < @poop_chance do
+          tiles = Map.update(tiles, {entity.x, entity.y}, %Tile{}, &Tile.water/1)
+
+          entity = %{
+            entity
+            | poops_left: entity.poops_left - 1,
+              action: pooped_action(entity.action)
+          }
+
+          {Map.put(entities, id, entity), tiles}
+        else
+          {entities, tiles}
+        end
+      end)
+
+    %{state | entities: entities, tiles: tiles}
+  end
+
+  # Pooping is a background event — it always fertilizes the tile when the
+  # roll succeeds, but shouldn't steal the badge from a more notable thing
+  # that happened the same tick (eating, reproducing, a fresh spawn).
+  defp pooped_action(action) when action in [:idle, :moved], do: :pooped
+  defp pooped_action(action), do: action
 
   defp immigrate(state) do
     counts = species_counts(state.entities)
