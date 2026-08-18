@@ -143,6 +143,35 @@ defmodule Fishbowl.World.EngineTest do
     assert connected?(tiles)
   end
 
+  test "daylight/1 oscillates smoothly between 0.0 and 1.0" do
+    state = Engine.new(5, 5)
+
+    samples =
+      Enum.map(0..199, fn tick ->
+        Engine.daylight(%{state | tick: tick})
+      end)
+
+    assert Enum.all?(samples, &(&1 >= 0.0 and &1 <= 1.0))
+    assert Enum.max(samples) > 0.99
+    assert Enum.min(samples) < 0.01
+  end
+
+  test "day?/1 is true at noon-equivalent tick and false at midnight-equivalent tick" do
+    state = Engine.new(5, 5)
+    assert Engine.day?(%{state | tick: 0})
+    refute Engine.day?(%{state | tick: 100})
+  end
+
+  test "plants grow faster in daylight than at night" do
+    day = Engine.new(5, 5) |> Map.put(:tick, 0) |> Engine.plant_seed(1, 1, "p1")
+    night = Engine.new(5, 5) |> Map.put(:tick, 100) |> Engine.plant_seed(1, 1, "p1")
+
+    day_energy = day |> Engine.tick() |> plant_energy_at(1, 1)
+    night_energy = night |> Engine.tick() |> plant_energy_at(1, 1)
+
+    assert day_energy > night_energy
+  end
+
   test "add_fertilizer/3 makes a plant on that tile grow faster than an unfertilized one" do
     plain = Engine.new(5, 5) |> Engine.plant_seed(1, 1, "p1")
     fertilized = Engine.new(5, 5) |> Engine.add_fertilizer(1, 1) |> Engine.plant_seed(1, 1, "p1")

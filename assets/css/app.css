@@ -152,6 +152,11 @@
   color: #0ea5e9;
 }
 
+.daylight-status {
+  font-size: 0.8rem;
+  color: #78716c;
+}
+
 .tool.help {
   font-weight: 600;
 }
@@ -234,12 +239,21 @@
 }
 
 .board {
+  position: relative;
   display: grid;
   gap: 1px;
   background: #292524;
   border: 1px solid #292524;
   width: 100%;
   user-select: none;
+}
+
+.night-overlay {
+  position: absolute;
+  inset: 0;
+  background: #0f172a;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .cell {

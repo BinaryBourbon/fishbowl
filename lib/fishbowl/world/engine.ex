@@ -30,6 +30,16 @@ defmodule Fishbowl.World.Engine do
   @rain_target_size 10..20
   @rain_duration 1..3
 
+  # Day/night: a slow global oscillator, purely derived from `state.tick` —
+  # no state to persist, no snapshot-compatibility risk. One full cycle
+  # takes @day_length_ticks ticks (200 ticks * the 1.5s tick interval is a
+  # 5-minute day). Plants grow fastest at midday, slowest at midnight;
+  # the range is deliberately mild (0.4x-1.6x) so night is a mood, not a
+  # famine.
+  @day_length_ticks 200
+  @min_daylight_growth 0.4
+  @max_daylight_growth 1.6
+
   def new(width, height) do
     tiles =
       for x <- 0..(width - 1), y <- 0..(height - 1), into: %{} do
@@ -47,6 +57,14 @@ defmodule Fishbowl.World.Engine do
     |> immigrate()
     |> tick_weather()
   end
+
+  @doc "0.0 (deepest night) to 1.0 (brightest noon), oscillating over @day_length_ticks ticks."
+  def daylight(state) do
+    phase = 2 * :math.pi() * state.tick / @day_length_ticks
+    (:math.cos(phase) + 1) / 2
+  end
+
+  def day?(state), do: daylight(state) >= 0.5
 
   @doc "The active rain patch, if any — `nil` or `%{tiles: MapSet.t({x, y}), ticks_left: pos_integer}`."
   def weather(state) do
@@ -347,7 +365,10 @@ defmodule Fishbowl.World.Engine do
   defp step(%Entity{kind: :plant} = plant, state, _snapshot) do
     stats = Entity.species(:plant)
     fertility = fertility_at(state, plant.x, plant.y)
-    growth = stats.growth_per_tick * fertility * growth_multiplier_at(state, plant.x, plant.y)
+
+    growth =
+      stats.growth_per_tick * fertility * growth_multiplier_at(state, plant.x, plant.y) *
+        daylight_growth_multiplier(state)
 
     plant = %{
       plant
@@ -445,6 +466,10 @@ defmodule Fishbowl.World.Engine do
       %Tile{} = tile -> Tile.growth_multiplier(tile)
       _ -> 1
     end
+  end
+
+  defp daylight_growth_multiplier(state) do
+    @min_daylight_growth + daylight(state) * (@max_daylight_growth - @min_daylight_growth)
   end
 
   defp nearest(snapshot, entity, kind, sight) do

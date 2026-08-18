@@ -225,6 +225,12 @@ defmodule FishbowlWeb.WorldLive do
     "rgb(#{trunc(90 - fertility * 40)}, #{green}, #{trunc(60 - fertility * 20)})"
   end
 
+  # Capped well short of 1.0 — a mood, not a blackout. Cells stay legible
+  # even at the deepest point of the cycle.
+  defp night_opacity(world) do
+    Float.round((1 - Engine.daylight(world)) * 0.5, 2)
+  end
+
   defp color_for(id) do
     Enum.at(@palette, :erlang.phash2(id, length(@palette)))
   end
@@ -252,6 +258,9 @@ defmodule FishbowlWeb.WorldLive do
             <span class="icon">{icon}</span> {label}
           </button>
         </div>
+        <span class="daylight-status" title="a full day/night cycle takes a few minutes">
+          {if Engine.day?(@world), do: "☀️", else: "🌙"} {round(Engine.daylight(@world) * 100)}%
+        </span>
         <span
           :if={Engine.weather(@world)}
           class="rain-status"
@@ -290,6 +299,7 @@ defmodule FishbowlWeb.WorldLive do
             cell.occupant
           )}</span>
         </div>
+        <div class="night-overlay" style={"opacity: #{night_opacity(@world)};"}></div>
       </div>
 
       <footer class="stats">
