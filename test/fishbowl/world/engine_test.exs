@@ -78,4 +78,24 @@ defmodule Fishbowl.World.EngineTest do
     assert Map.get(counts, :predator, 0) > 0
     assert Map.get(counts, :plant, 0) > 0
   end
+
+  test "tick/1 tolerates state persisted before the weather field existed" do
+    # No :weather key at all — as a snapshot saved before this field
+    # existed would look. tick_weather only ever adds the key back once
+    # rain actually starts, so the real assertion is just that repeated
+    # ticks don't raise on the missing key.
+    state = Engine.new(5, 5) |> Map.delete(:weather)
+
+    state = Enum.reduce(1..5, state, fn _, acc -> Engine.tick(acc) end)
+
+    assert state.tick == 5
+    assert Engine.weather(state) == nil or is_map(Engine.weather(state))
+  end
+
+  test "rain eventually waters some tiles" do
+    state = Engine.new(20, 20)
+    state = Enum.reduce(1..300, state, fn _, acc -> Engine.tick(acc) end)
+
+    assert Enum.any?(state.tiles, fn {_pos, tile} -> tile.fertility > 0.5 end)
+  end
 end

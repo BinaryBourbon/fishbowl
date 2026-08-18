@@ -22,13 +22,19 @@ defmodule Fishbowl.World.Engine do
   @immigration_floor %{plant: 15, herbivore: 4, predator: 2}
   @immigration_chance 0.15
 
+  # Rain: while no storm is active, each tick has a small chance to start one
+  # over a random ~4x4 patch for a few ticks, watering every tile it covers.
+  @rain_chance 0.04
+  @rain_size 3..5
+  @rain_duration 1..3
+
   def new(width, height) do
     tiles =
       for x <- 0..(width - 1), y <- 0..(height - 1), into: %{} do
         {{x, y}, %Tile{}}
       end
 
-    %{width: width, height: height, tick: 0, tiles: tiles, entities: %{}}
+    %{width: width, height: height, tick: 0, tiles: tiles, entities: %{}, weather: nil}
   end
 
   def tick(state) do
@@ -37,7 +43,11 @@ defmodule Fishbowl.World.Engine do
     |> decay_tiles()
     |> tick_entities()
     |> immigrate()
+    |> tick_weather()
   end
+
+  @doc "The active rain patch, if any — `nil` or `%{x:, y:, w:, h:, ticks_left:}`."
+  def weather(state), do: Map.get(state, :weather)
 
   # --- Player actions -------------------------------------------------
 
@@ -139,6 +149,57 @@ defmodule Fishbowl.World.Engine do
         acc
       end
     end)
+  end
+
+  defp tick_weather(state) do
+    state =
+      case Map.get(state, :weather) do
+        nil -> maybe_start_rain(state)
+        _weather -> state
+      end
+
+    case Map.get(state, :weather) do
+      nil ->
+        state
+
+      weather ->
+        state = water_patch(state, weather)
+        ticks_left = weather.ticks_left - 1
+        next = if ticks_left <= 0, do: nil, else: %{weather | ticks_left: ticks_left}
+        Map.put(state, :weather, next)
+    end
+  end
+
+  defp maybe_start_rain(state) do
+    if :rand.uniform() < @rain_chance do
+      w = Enum.random(@rain_size)
+      h = Enum.random(@rain_size)
+      x = :rand.uniform(max(state.width - w + 1, 1)) - 1
+      y = :rand.uniform(max(state.height - h + 1, 1)) - 1
+
+      patch = %{
+        x: x,
+        y: y,
+        w: min(w, state.width),
+        h: min(h, state.height),
+        ticks_left: Enum.random(@rain_duration)
+      }
+
+      Map.put(state, :weather, patch)
+    else
+      state
+    end
+  end
+
+  defp water_patch(state, %{x: x0, y: y0, w: w, h: h}) do
+    tiles =
+      Enum.reduce(x0..(x0 + w - 1), state.tiles, fn x, tiles ->
+        Enum.reduce(y0..(y0 + h - 1), tiles, fn y, tiles ->
+          Map.update(tiles, {x, y}, %Tile{}, &Tile.water/1)
+        end)
+      end)
+
+    %{state | tiles: tiles}
   end
 
   defp species_counts(entities) do

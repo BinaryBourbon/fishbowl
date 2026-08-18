@@ -9,6 +9,7 @@ defmodule FishbowlWeb.WorldLive do
   use FishbowlWeb, :live_view
 
   alias Fishbowl.World
+  alias Fishbowl.World.Engine
   alias FishbowlWeb.Presence
 
   @history_length 120
@@ -147,6 +148,7 @@ defmodule FishbowlWeb.WorldLive do
 
   defp build_cells(world) do
     by_pos = Enum.group_by(world.entities, fn {_id, e} -> {e.x, e.y} end, fn {_id, e} -> e end)
+    rain = Engine.weather(world)
 
     for y <- 0..(world.height - 1), x <- 0..(world.width - 1) do
       tile = Map.fetch!(world.tiles, {x, y})
@@ -158,9 +160,16 @@ defmodule FishbowlWeb.WorldLive do
         terrain: tile.terrain,
         fertility: tile.fertility,
         tint: tile.tint && color_for(tile.tint),
-        occupant: occupant
+        occupant: occupant,
+        raining: raining?(rain, x, y)
       }
     end
+  end
+
+  defp raining?(nil, _x, _y), do: false
+
+  defp raining?(%{x: rx, y: ry, w: w, h: h}, x, y) do
+    x in rx..(rx + w - 1) and y in ry..(ry + h - 1)
   end
 
   defp top_occupant([]), do: nil
@@ -226,6 +235,11 @@ defmodule FishbowlWeb.WorldLive do
             <span class="icon">{icon}</span> {label}
           </button>
         </div>
+        <span
+          :if={Engine.weather(@world)}
+          class="rain-status"
+          title="it's raining somewhere on the grid"
+        >🌧️ raining</span>
         <div class="presence" title="players here now">
           <span :for={p <- @presences} class="dot" style={"background:#{p.color}"}></span>
           <span class="count">{length(@presences)} here</span>
@@ -238,7 +252,7 @@ defmodule FishbowlWeb.WorldLive do
       >
         <div
           :for={cell <- @cells}
-          class={"cell #{cell.terrain} #{action_class(cell.occupant)} #{if @tool == :scoop and @scoop_from == {cell.x, cell.y}, do: "selected"}"}
+          class={"cell #{cell.terrain} #{action_class(cell.occupant)} #{if cell.raining, do: "raining"} #{if @tool == :scoop and @scoop_from == {cell.x, cell.y}, do: "selected"}"}
           style={"background:#{if cell.terrain == :rock, do: "#57534e", else: soil_color(cell.fertility)}; #{if cell.tint, do: "box-shadow: inset 0 0 0 2px #{cell.tint};"}"}
           phx-click="cell_click"
           phx-value-x={cell.x}
