@@ -64,19 +64,32 @@ defmodule Fishbowl.World.EngineTest do
   end
 
   test "tick/1 eventually immigrates herbivores and predators back from zero" do
+    # Assert "immigration introduces each species at some point," not "the
+    # population survives to this exact tick" — a freshly-immigrated
+    # herbivore can get hunted down by an already-present predator within a
+    # tick or two, so sampling only the final tick is exposed to real
+    # predation dynamics, not just immigration odds, and flakes under that
+    # combination more often than the per-tick chance alone suggests.
     state = Engine.new(20, 20)
+    seen = %{herbivore: false, predator: false, plant: false}
 
-    # Unseeded: entity ids come from :crypto.strong_rand_bytes, which
-    # :rand.seed can't pin, so map-iteration order (and thus which entity
-    # consumes which :rand draw) still varies run to run even with a fixed
-    # seed. 150 ticks at a 15% per-tick immigration chance leaves failure
-    # probability negligible without fighting that.
-    state = Enum.reduce(1..150, state, fn _, acc -> Engine.tick(acc) end)
+    {_state, seen} =
+      Enum.reduce(1..150, {state, seen}, fn _, {acc, seen} ->
+        acc = Engine.tick(acc)
+        counts = acc.entities |> Map.values() |> Enum.map(& &1.kind) |> Enum.frequencies()
 
-    counts = state.entities |> Map.values() |> Enum.map(& &1.kind) |> Enum.frequencies()
-    assert Map.get(counts, :herbivore, 0) > 0
-    assert Map.get(counts, :predator, 0) > 0
-    assert Map.get(counts, :plant, 0) > 0
+        seen = %{
+          herbivore: seen.herbivore or Map.get(counts, :herbivore, 0) > 0,
+          predator: seen.predator or Map.get(counts, :predator, 0) > 0,
+          plant: seen.plant or Map.get(counts, :plant, 0) > 0
+        }
+
+        {acc, seen}
+      end)
+
+    assert seen.herbivore
+    assert seen.predator
+    assert seen.plant
   end
 
   test "tick/1 tolerates state persisted before the weather field existed" do
@@ -97,5 +110,55 @@ defmodule Fishbowl.World.EngineTest do
     state = Enum.reduce(1..300, state, fn _, acc -> Engine.tick(acc) end)
 
     assert Enum.any?(state.tiles, fn {_pos, tile} -> tile.fertility > 0.5 end)
+  end
+
+  test "tick/1 tolerates a weather value from before rain was a random blob" do
+    # The very first rain shipped as a plain rectangle (x/y/w/h). A
+    # snapshot saved mid-storm at that point wouldn't have :tiles at all —
+    # Engine.weather/1 should treat that as "not raining" rather than
+    # crash the first time tick_weather touches it.
+    old_shaped = %{x: 2, y: 2, w: 3, h: 3, ticks_left: 2}
+    state = Engine.new(10, 10) |> Map.put(:weather, old_shaped)
+
+    assert Engine.weather(state) == nil
+    state = Engine.tick(state)
+    assert state.tick == 1
+  end
+
+  test "a rain patch is a single connected blob, grown by random walk" do
+    state = Engine.new(30, 30)
+
+    patch =
+      Enum.reduce_while(1..300, state, fn _, acc ->
+        acc = Engine.tick(acc)
+
+        case Engine.weather(acc) do
+          nil -> {:cont, acc}
+          weather -> {:halt, weather}
+        end
+      end)
+
+    assert %{tiles: tiles} = patch
+    assert MapSet.size(tiles) in 10..20
+    assert connected?(tiles)
+  end
+
+  defp connected?(tiles) do
+    [start | _] = MapSet.to_list(tiles)
+    reached = flood_fill(MapSet.new([start]), [start], tiles)
+    MapSet.size(reached) == MapSet.size(tiles)
+  end
+
+  defp flood_fill(reached, [], _tiles), do: reached
+
+  defp flood_fill(reached, [{x, y} | rest], tiles) do
+    neighbors =
+      for dx <- -1..1, dy <- -1..1, {dx, dy} != {0, 0}, do: {x + dx, y + dy}
+
+    new =
+      neighbors
+      |> Enum.filter(&(MapSet.member?(tiles, &1) and not MapSet.member?(reached, &1)))
+
+    flood_fill(MapSet.union(reached, MapSet.new(new)), new ++ rest, tiles)
   end
 end

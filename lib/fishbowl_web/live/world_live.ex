@@ -172,10 +172,7 @@ defmodule FishbowlWeb.WorldLive do
   end
 
   defp raining?(nil, _x, _y), do: false
-
-  defp raining?(%{x: rx, y: ry, w: w, h: h}, x, y) do
-    x in rx..(rx + w - 1) and y in ry..(ry + h - 1)
-  end
+  defp raining?(%{tiles: tiles}, x, y), do: MapSet.member?(tiles, {x, y})
 
   defp top_occupant([]), do: nil
 

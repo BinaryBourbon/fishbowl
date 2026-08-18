@@ -23,9 +23,11 @@ defmodule Fishbowl.World.Engine do
   @immigration_chance 0.15
 
   # Rain: while no storm is active, each tick has a small chance to start one
-  # over a random ~4x4 patch for a few ticks, watering every tile it covers.
+  # over a random patch for a few ticks, watering every tile it covers. The
+  # patch is grown as a random walk (not a rectangle) so its edges come out
+  # ragged, like an actual cloud shadow.
   @rain_chance 0.04
-  @rain_size 3..5
+  @rain_target_size 10..20
   @rain_duration 1..3
 
   def new(width, height) do
@@ -46,8 +48,15 @@ defmodule Fishbowl.World.Engine do
     |> tick_weather()
   end
 
-  @doc "The active rain patch, if any — `nil` or `%{x:, y:, w:, h:, ticks_left:}`."
-  def weather(state), do: Map.get(state, :weather)
+  @doc "The active rain patch, if any — `nil` or `%{tiles: MapSet.t({x, y}), ticks_left: pos_integer}`."
+  def weather(state) do
+    case Map.get(state, :weather) do
+      %{tiles: %MapSet{}, ticks_left: _} = weather -> weather
+      # Anything else — nil, or a shape from before rain existed/changed
+      # shape — is treated as "not currently raining" rather than crashing.
+      _ -> nil
+    end
+  end
 
   # --- Player actions -------------------------------------------------
 
@@ -153,17 +162,17 @@ defmodule Fishbowl.World.Engine do
 
   defp tick_weather(state) do
     state =
-      case Map.get(state, :weather) do
+      case weather(state) do
         nil -> maybe_start_rain(state)
         _weather -> state
       end
 
-    case Map.get(state, :weather) do
+    case weather(state) do
       nil ->
         state
 
       weather ->
-        state = water_patch(state, weather)
+        state = water_patch(state, weather.tiles)
         ticks_left = weather.ticks_left - 1
         next = if ticks_left <= 0, do: nil, else: %{weather | ticks_left: ticks_left}
         Map.put(state, :weather, next)
@@ -172,16 +181,8 @@ defmodule Fishbowl.World.Engine do
 
   defp maybe_start_rain(state) do
     if :rand.uniform() < @rain_chance do
-      w = Enum.random(@rain_size)
-      h = Enum.random(@rain_size)
-      x = :rand.uniform(max(state.width - w + 1, 1)) - 1
-      y = :rand.uniform(max(state.height - h + 1, 1)) - 1
-
       patch = %{
-        x: x,
-        y: y,
-        w: min(w, state.width),
-        h: min(h, state.height),
+        tiles: random_blob(state, Enum.random(@rain_target_size)),
         ticks_left: Enum.random(@rain_duration)
       }
 
@@ -191,15 +192,41 @@ defmodule Fishbowl.World.Engine do
     end
   end
 
-  defp water_patch(state, %{x: x0, y: y0, w: w, h: h}) do
-    tiles =
-      Enum.reduce(x0..(x0 + w - 1), state.tiles, fn x, tiles ->
-        Enum.reduce(y0..(y0 + h - 1), tiles, fn y, tiles ->
-          Map.update(tiles, {x, y}, %Tile{}, &Tile.water/1)
-        end)
+  # Grows an irregular patch by repeatedly adding a random unclaimed
+  # neighbor of the current blob — a random walk / diffusion-limited
+  # growth, not a rectangle, so the outline comes out jagged.
+  defp random_blob(state, target_size) do
+    start = {:rand.uniform(state.width) - 1, :rand.uniform(state.height) - 1}
+    grow_blob(state, MapSet.new([start]), target_size - 1)
+  end
+
+  defp grow_blob(_state, blob, remaining) when remaining <= 0, do: blob
+
+  defp grow_blob(state, blob, remaining) do
+    candidates =
+      blob
+      |> Enum.flat_map(fn {x, y} ->
+        Enum.map(@directions, fn {dx, dy} -> {x + dx, y + dy} end)
+      end)
+      |> Enum.uniq()
+      |> Enum.filter(fn {x, y} ->
+        x in 0..(state.width - 1) and y in 0..(state.height - 1) and
+          not MapSet.member?(blob, {x, y})
       end)
 
-    %{state | tiles: tiles}
+    case candidates do
+      [] -> blob
+      _ -> grow_blob(state, MapSet.put(blob, Enum.random(candidates)), remaining - 1)
+    end
+  end
+
+  defp water_patch(state, tiles) do
+    updated =
+      Enum.reduce(tiles, state.tiles, fn pos, acc ->
+        Map.update(acc, pos, %Tile{}, &Tile.water/1)
+      end)
+
+    %{state | tiles: updated}
   end
 
   defp species_counts(entities) do

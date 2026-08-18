@@ -47,13 +47,34 @@ jobs:
       # Flux only redeploys on a manifest diff — floating :latest never
       # triggers a rollout by itself. Pin the manifest to the exact image
       # this job just built so every push actually reaches the cluster.
+      #
+      # Retries on push rejection: two workflow runs (e.g. two pushes close
+      # together) can race to land their pin commit first. Re-fetching and
+      # rebasing before each retry re-applies this job's own sed on top of
+      # whatever landed in between, rather than failing outright.
       - name: Pin k8s manifest to this build
         run: |
-          sed -i "s#image: .*/fishbowl:.*#image: ${{ steps.image.outputs.name }}:${{ github.sha }}#" k8s/deployment.yaml
-          if ! git diff --quiet k8s/deployment.yaml; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          for attempt in 1 2 3 4 5; do
+            sed -i "s#image: .*/fishbowl:.*#image: ${{ steps.image.outputs.name }}:${{ github.sha }}#" k8s/deployment.yaml
+
+            if git diff --quiet k8s/deployment.yaml; then
+              echo "manifest already pinned to this build"
+              break
+            fi
+
             git add k8s/deployment.yaml
             git commit -m "chore: pin fishbowl image to ${{ github.sha }} [skip ci]"
-            git push
-          fi
+
+            if git push; then
+              break
+            fi
+
+            echo "push rejected (attempt $attempt), rebasing onto latest main and retrying"
+            git reset --hard HEAD~1
+            git fetch origin main
+            git reset --hard origin/main
+            sleep "$((RANDOM % 5 + 1))"
+          done
