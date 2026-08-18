@@ -7,6 +7,8 @@ defmodule Fishbowl.World.Snapshot do
 
   require Logger
 
+  alias Fishbowl.World.Entity
+
   def path do
     Application.get_env(:fishbowl, :snapshot_path, "priv/world_snapshot.bin")
   end
@@ -26,7 +28,7 @@ defmodule Fishbowl.World.Snapshot do
 
   def load do
     case File.read(path()) do
-      {:ok, data} -> {:ok, :erlang.binary_to_term(data)}
+      {:ok, data} -> {:ok, migrate(:erlang.binary_to_term(data))}
       {:error, _reason} -> :error
     end
   rescue
@@ -34,4 +36,19 @@ defmodule Fishbowl.World.Snapshot do
       Logger.warning("Fishbowl.World.Snapshot load failed: #{inspect(error)}")
       :error
   end
+
+  # Snapshots outlive deploys, so a snapshot on disk may have been written by
+  # an older `Entity` struct. Rebuild every entity through `struct/2` so fields
+  # added since then get their defaults instead of blowing up the first tick
+  # with a `KeyError` on `%{entity | new_field: ...}`.
+  defp migrate(%{entities: entities} = state) when is_map(entities) do
+    %{state | entities: Map.new(entities, fn {id, e} -> {id, migrate_entity(e)} end)}
+  end
+
+  defp migrate(state), do: state
+
+  defp migrate_entity(%{__struct__: Entity} = entity),
+    do: struct(Entity, Map.delete(entity, :__struct__))
+
+  defp migrate_entity(entity), do: entity
 end
