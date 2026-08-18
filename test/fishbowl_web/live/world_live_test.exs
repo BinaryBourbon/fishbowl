@@ -49,6 +49,34 @@ defmodule FishbowlWeb.WorldLiveTest do
     assert %{fertilized: false} = Map.get(Fishbowl.World.get_state().tiles, {11, 11})
   end
 
+  test "fertilizing a tile visibly changes its rendered background color", %{conn: conn} do
+    {:ok, view, html} = live(conn, ~p"/")
+
+    before_style = cell_style(html, 13, 13)
+
+    view |> element(~s([phx-value-tool="fertilizer"])) |> render_click()
+    view |> element(~s([phx-value-x="13"][phx-value-y="13"])) |> render_click()
+
+    # add_fertilizer is an async cast — the LiveView's own render_click
+    # return reflects only its synchronous handling, not the follow-up
+    # {:world_tick, world} broadcast that lands once World processes the
+    # cast. Wait for that round-trip, then re-render.
+    Process.sleep(50)
+    after_style = view |> render() |> cell_style(13, 13)
+
+    assert before_style != after_style
+  end
+
+  defp cell_style(html, x, y) do
+    [_, style] =
+      Regex.run(
+        ~r/<div[^>]*style="([^"]*)"[^>]*phx-value-x="#{x}"[^>]*phx-value-y="#{y}"/s,
+        html
+      )
+
+    style
+  end
+
   test "herbivore tool releases a rabbit on click", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
     before_count = count_kind(:herbivore)

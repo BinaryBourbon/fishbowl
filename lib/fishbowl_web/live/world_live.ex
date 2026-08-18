@@ -219,10 +219,23 @@ defmodule FishbowlWeb.WorldLive do
   defp badge(%{action: :ate}), do: "🍴"
   defp badge(_), do: nil
 
-  defp soil_color(fertility) do
+  defp soil_color(fertility, fertilized?) do
     # Dry soil -> lush green as fertility rises from 0 to 1.
     green = trunc(70 + fertility * 110)
-    "rgb(#{trunc(90 - fertility * 40)}, #{green}, #{trunc(60 - fertility * 20)})"
+    base = {trunc(90 - fertility * 40), green, trunc(60 - fertility * 20)}
+
+    {r, g, b} =
+      if fertilized?, do: blend(base, _amber = {217, 119, 6}, 0.5), else: base
+
+    "rgb(#{r}, #{g}, #{b})"
+  end
+
+  defp blend({r1, g1, b1}, {r2, g2, b2}, amount) do
+    {
+      trunc(r1 * (1 - amount) + r2 * amount),
+      trunc(g1 * (1 - amount) + g2 * amount),
+      trunc(b1 * (1 - amount) + b2 * amount)
+    }
   end
 
   # Capped well short of 1.0 — a mood, not a blackout. Cells stay legible
@@ -290,7 +303,7 @@ defmodule FishbowlWeb.WorldLive do
         <div
           :for={cell <- @cells}
           class={"cell #{cell.terrain} #{action_class(cell.occupant)} #{if cell.raining, do: "raining"} #{if cell.fertilized, do: "fertilized"} #{if @tool == :scoop and @scoop_from == {cell.x, cell.y}, do: "selected"}"}
-          style={"background:#{if cell.terrain == :rock, do: "#57534e", else: soil_color(cell.fertility)}; #{if cell.tint, do: "box-shadow: inset 0 0 0 2px #{cell.tint};"}"}
+          style={"background:#{if cell.terrain == :rock, do: "#57534e", else: soil_color(cell.fertility, cell.fertilized)}; #{if cell.tint, do: "box-shadow: inset 0 0 0 2px #{cell.tint};"}"}
           phx-click="cell_click"
           phx-value-x={cell.x}
           phx-value-y={cell.y}
