@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fishbowl
+  namespace: default
+  labels:
+    app: fishbowl
+spec:
+  type: ClusterIP
+  selector:
+    app: fishbowl
+  ports:
+    - port: 80
+      targetPort: 4000

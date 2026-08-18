@@ -1,0 +1,37 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: fishbowl
+  namespace: default
+  labels:
+    app: fishbowl
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: "Host(`fishbowl.inevitable.fyi`)"
+      kind: Rule
+      services:
+        - name: fishbowl
+          port: 80
+  tls:
+    secretName: fishbowl-tls
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: fishbowl-http
+  namespace: default
+  labels:
+    app: fishbowl
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: "Host(`fishbowl.inevitable.fyi`)"
+      kind: Rule
+      middlewares:
+        - name: redirect-https
+      services:
+        - name: fishbowl
+          port: 80

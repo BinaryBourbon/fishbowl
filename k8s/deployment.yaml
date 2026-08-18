@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fishbowl
+  namespace: default
+  labels:
+    app: fishbowl
+spec:
+  # The world lives in a single in-memory GenServer — do not scale beyond 1
+  # replica, that would fork the ecosystem into divergent copies.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: fishbowl
+  template:
+    metadata:
+      labels:
+        app: fishbowl
+    spec:
+      securityContext:
+        fsGroup: 65534
+      containers:
+        - name: fishbowl
+          image: ghcr.io/binarybourbon/fishbowl:latest
+          ports:
+            - containerPort: 4000
+          env:
+            - name: PHX_SERVER
+              value: "true"
+            - name: PORT
+              value: "4000"
+            - name: PHX_HOST
+              value: fishbowl.inevitable.fyi
+            - name: SNAPSHOT_PATH
+              value: /data/world_snapshot.bin
+            - name: SECRET_KEY_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: fishbowl-secrets
+                  key: SECRET_KEY_BASE
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 4000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 4000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: fishbowl-data
