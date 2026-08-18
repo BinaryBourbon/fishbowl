@@ -33,6 +33,8 @@ defmodule Fishbowl.World do
   def water(x, y), do: GenServer.cast(__MODULE__, {:water, x, y})
   def place_rock(x, y), do: GenServer.cast(__MODULE__, {:place_rock, x, y})
   def remove_rock(x, y), do: GenServer.cast(__MODULE__, {:remove_rock, x, y})
+  def add_fertilizer(x, y), do: GenServer.cast(__MODULE__, {:add_fertilizer, x, y})
+  def remove_fertilizer(x, y), do: GenServer.cast(__MODULE__, {:remove_fertilizer, x, y})
 
   def scoop(from_x, from_y, to_x, to_y),
     do: GenServer.cast(__MODULE__, {:scoop, from_x, from_y, to_x, to_y})
@@ -69,6 +71,12 @@ defmodule Fishbowl.World do
 
   def handle_cast({:remove_rock, x, y}, state),
     do: broadcast_mutate(Engine.remove_rock(state, x, y))
+
+  def handle_cast({:add_fertilizer, x, y}, state),
+    do: broadcast_mutate(Engine.add_fertilizer(state, x, y))
+
+  def handle_cast({:remove_fertilizer, x, y}, state),
+    do: broadcast_mutate(Engine.remove_fertilizer(state, x, y))
 
   def handle_cast({:scoop, fx, fy, tx, ty}, state) do
     broadcast_mutate(Engine.scoop(state, fx, fy, tx, ty))

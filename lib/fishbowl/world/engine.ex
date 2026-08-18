@@ -114,6 +114,21 @@ defmodule Fishbowl.World.Engine do
     end)
   end
 
+  @doc "Fertilize a tile — plants there grow 3x as fast (see Tile.growth_multiplier/1). No-op on rock."
+  def add_fertilizer(state, x, y) do
+    Map.update!(state, :tiles, fn tiles ->
+      Map.update(tiles, {x, y}, %Tile{}, fn tile ->
+        if Tile.passable?(tile), do: %{tile | fertilized: true}, else: tile
+      end)
+    end)
+  end
+
+  def remove_fertilizer(state, x, y) do
+    Map.update!(state, :tiles, fn tiles ->
+      Map.update(tiles, {x, y}, %Tile{}, &%{&1 | fertilized: false})
+    end)
+  end
+
   @doc "Pick up the top entity on a tile and drop it elsewhere (the 'scoop' tool)."
   def scoop(state, from_x, from_y, to_x, to_y) do
     dest = Map.get(state.tiles, {to_x, to_y})
@@ -298,10 +313,11 @@ defmodule Fishbowl.World.Engine do
   defp step(%Entity{kind: :plant} = plant, state, _snapshot) do
     stats = Entity.species(:plant)
     fertility = fertility_at(state, plant.x, plant.y)
+    growth = stats.growth_per_tick * fertility * growth_multiplier_at(state, plant.x, plant.y)
 
     plant = %{
       plant
-      | energy: min(stats.max_energy, plant.energy + stats.growth_per_tick * fertility),
+      | energy: min(stats.max_energy, plant.energy + growth),
         action: :idle
     }
 
@@ -387,6 +403,13 @@ defmodule Fishbowl.World.Engine do
     case Map.get(state.tiles, {x, y}) do
       %Tile{fertility: f} -> max(f, 0.05)
       _ -> 0.05
+    end
+  end
+
+  defp growth_multiplier_at(state, x, y) do
+    case Map.get(state.tiles, {x, y}) do
+      %Tile{} = tile -> Tile.growth_multiplier(tile)
+      _ -> 1
     end
   end
 

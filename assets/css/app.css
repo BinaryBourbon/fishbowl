@@ -292,6 +292,11 @@
   pointer-events: none;
 }
 
+.cell.fertilized {
+  outline: 1px dashed #92400e;
+  outline-offset: -1px;
+}
+
 @keyframes cell-pop {
   from {
     transform: scale(1.6);

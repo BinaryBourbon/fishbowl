@@ -36,6 +36,19 @@ defmodule FishbowlWeb.WorldLiveTest do
     assert %{terrain: :rock} = Map.get(Fishbowl.World.get_state().tiles, {10, 10})
   end
 
+  test "fertilizer tool toggles fertilized on and back off", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/")
+    view |> element(~s([phx-value-tool="fertilizer"])) |> render_click()
+
+    view |> element(~s([phx-value-x="11"][phx-value-y="11"])) |> render_click()
+    Process.sleep(50)
+    assert %{fertilized: true} = Map.get(Fishbowl.World.get_state().tiles, {11, 11})
+
+    view |> element(~s([phx-value-x="11"][phx-value-y="11"])) |> render_click()
+    Process.sleep(50)
+    assert %{fertilized: false} = Map.get(Fishbowl.World.get_state().tiles, {11, 11})
+  end
+
   test "herbivore tool releases a rabbit on click", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
     before_count = count_kind(:herbivore)

@@ -7,7 +7,7 @@ defmodule Fishbowl.World.Snapshot do
 
   require Logger
 
-  alias Fishbowl.World.Entity
+  alias Fishbowl.World.{Entity, Tile}
 
   def path do
     Application.get_env(:fishbowl, :snapshot_path, "priv/world_snapshot.bin")
@@ -38,17 +38,24 @@ defmodule Fishbowl.World.Snapshot do
   end
 
   # Snapshots outlive deploys, so a snapshot on disk may have been written by
-  # an older `Entity` struct. Rebuild every entity through `struct/2` so fields
-  # added since then get their defaults instead of blowing up the first tick
-  # with a `KeyError` on `%{entity | new_field: ...}`.
-  defp migrate(%{entities: entities} = state) when is_map(entities) do
-    %{state | entities: Map.new(entities, fn {id, e} -> {id, migrate_entity(e)} end)}
+  # an older `Entity`/`Tile` struct. Rebuild every one through `struct/2` so
+  # fields added since then get their defaults instead of blowing up the
+  # first tick with a `KeyError` on `%{entity | new_field: ...}`.
+  defp migrate(state) do
+    state
+    |> migrate_field(:entities, &migrate_struct(&1, Entity))
+    |> migrate_field(:tiles, &migrate_struct(&1, Tile))
   end
 
-  defp migrate(state), do: state
+  defp migrate_field(state, key, fun) do
+    case Map.get(state, key) do
+      map when is_map(map) -> Map.put(state, key, Map.new(map, fn {k, v} -> {k, fun.(v)} end))
+      _ -> state
+    end
+  end
 
-  defp migrate_entity(%{__struct__: Entity} = entity),
-    do: struct(Entity, Map.delete(entity, :__struct__))
+  defp migrate_struct(%{__struct__: module} = value, module),
+    do: struct(module, Map.delete(value, :__struct__))
 
-  defp migrate_entity(entity), do: entity
+  defp migrate_struct(value, _module), do: value
 end

@@ -28,6 +28,7 @@ defmodule FishbowlWeb.WorldLive do
   @tools [
     {:seed, "🌱", "Seed"},
     {:water, "💧", "Water"},
+    {:fertilizer, "💩", "Fertilizer"},
     {:rock, "🪨", "Rock"},
     {:scoop, "🤲", "Scoop"},
     {:herbivore, "🐇", "Release rabbit"},
@@ -107,6 +108,15 @@ defmodule FishbowlWeb.WorldLive do
 
         {:noreply, socket}
 
+      :fertilizer ->
+        if fertilized?(socket.assigns.world, x, y) do
+          World.remove_fertilizer(x, y)
+        else
+          World.add_fertilizer(x, y)
+        end
+
+        {:noreply, socket}
+
       :scoop ->
         handle_scoop_click(socket, x, y)
 
@@ -166,7 +176,8 @@ defmodule FishbowlWeb.WorldLive do
         fertility: tile.fertility,
         tint: tile.tint && color_for(tile.tint),
         occupant: occupant,
-        raining: raining?(rain, x, y)
+        raining: raining?(rain, x, y),
+        fertilized: tile.fertilized
       }
     end
   end
@@ -186,6 +197,10 @@ defmodule FishbowlWeb.WorldLive do
 
   defp rock?(world, x, y) do
     match?(%{terrain: :rock}, Map.get(world.tiles, {x, y}))
+  end
+
+  defp fertilized?(world, x, y) do
+    match?(%{fertilized: true}, Map.get(world.tiles, {x, y}))
   end
 
   defp emoji(:plant), do: "🌱"
@@ -265,7 +280,7 @@ defmodule FishbowlWeb.WorldLive do
       >
         <div
           :for={cell <- @cells}
-          class={"cell #{cell.terrain} #{action_class(cell.occupant)} #{if cell.raining, do: "raining"} #{if @tool == :scoop and @scoop_from == {cell.x, cell.y}, do: "selected"}"}
+          class={"cell #{cell.terrain} #{action_class(cell.occupant)} #{if cell.raining, do: "raining"} #{if cell.fertilized, do: "fertilized"} #{if @tool == :scoop and @scoop_from == {cell.x, cell.y}, do: "selected"}"}
           style={"background:#{if cell.terrain == :rock, do: "#57534e", else: soil_color(cell.fertility)}; #{if cell.tint, do: "box-shadow: inset 0 0 0 2px #{cell.tint};"}"}
           phx-click="cell_click"
           phx-value-x={cell.x}

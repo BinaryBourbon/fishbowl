@@ -143,6 +143,36 @@ defmodule Fishbowl.World.EngineTest do
     assert connected?(tiles)
   end
 
+  test "add_fertilizer/3 makes a plant on that tile grow faster than an unfertilized one" do
+    plain = Engine.new(5, 5) |> Engine.plant_seed(1, 1, "p1")
+    fertilized = Engine.new(5, 5) |> Engine.add_fertilizer(1, 1) |> Engine.plant_seed(1, 1, "p1")
+
+    plain_energy = plain |> Engine.tick() |> plant_energy_at(1, 1)
+    fertilized_energy = fertilized |> Engine.tick() |> plant_energy_at(1, 1)
+
+    assert fertilized_energy > plain_energy
+  end
+
+  test "remove_fertilizer/3 undoes it" do
+    state = Engine.new(5, 5) |> Engine.add_fertilizer(1, 1)
+    assert %{fertilized: true} = state.tiles[{1, 1}]
+
+    state = Engine.remove_fertilizer(state, 1, 1)
+    assert %{fertilized: false} = state.tiles[{1, 1}]
+  end
+
+  test "add_fertilizer/3 is a no-op on a rock tile" do
+    state = Engine.new(5, 5) |> Engine.place_rock(1, 1) |> Engine.add_fertilizer(1, 1)
+    assert %{fertilized: false} = state.tiles[{1, 1}]
+  end
+
+  defp plant_energy_at(state, x, y) do
+    state.entities
+    |> Map.values()
+    |> Enum.find(&(&1.kind == :plant and &1.x == x and &1.y == y))
+    |> Map.fetch!(:energy)
+  end
+
   defp connected?(tiles) do
     [start | _] = MapSet.to_list(tiles)
     reached = flood_fill(MapSet.new([start]), [start], tiles)
