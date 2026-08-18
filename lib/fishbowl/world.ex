@@ -33,7 +33,9 @@ defmodule Fishbowl.World do
   def water(x, y), do: GenServer.cast(__MODULE__, {:water, x, y})
   def place_rock(x, y), do: GenServer.cast(__MODULE__, {:place_rock, x, y})
   def remove_rock(x, y), do: GenServer.cast(__MODULE__, {:remove_rock, x, y})
-  def scoop(from_x, from_y, to_x, to_y), do: GenServer.cast(__MODULE__, {:scoop, from_x, from_y, to_x, to_y})
+
+  def scoop(from_x, from_y, to_x, to_y),
+    do: GenServer.cast(__MODULE__, {:scoop, from_x, from_y, to_x, to_y})
 
   # --- Server -------------------------------------------------------------
 
@@ -57,10 +59,16 @@ defmodule Fishbowl.World do
     broadcast_mutate(Engine.plant_seed(state, x, y, player_id))
   end
 
-  def handle_cast({:release, kind, x, y}, state), do: broadcast_mutate(Engine.release(state, kind, x, y))
+  def handle_cast({:release, kind, x, y}, state),
+    do: broadcast_mutate(Engine.release(state, kind, x, y))
+
   def handle_cast({:water, x, y}, state), do: broadcast_mutate(Engine.water(state, x, y))
-  def handle_cast({:place_rock, x, y}, state), do: broadcast_mutate(Engine.place_rock(state, x, y))
-  def handle_cast({:remove_rock, x, y}, state), do: broadcast_mutate(Engine.remove_rock(state, x, y))
+
+  def handle_cast({:place_rock, x, y}, state),
+    do: broadcast_mutate(Engine.place_rock(state, x, y))
+
+  def handle_cast({:remove_rock, x, y}, state),
+    do: broadcast_mutate(Engine.remove_rock(state, x, y))
 
   def handle_cast({:scoop, fx, fy, tx, ty}, state) do
     broadcast_mutate(Engine.scoop(state, fx, fy, tx, ty))

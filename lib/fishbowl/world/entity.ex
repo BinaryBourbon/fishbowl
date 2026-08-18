@@ -6,9 +6,10 @@ defmodule Fishbowl.World.Entity do
   """
 
   @derive Jason.Encoder
-  defstruct [:id, :kind, :x, :y, :energy, :age, :cooldown]
+  defstruct [:id, :kind, :x, :y, :energy, :age, :cooldown, action: :spawned]
 
   @type kind :: :plant | :herbivore | :predator
+  @type action :: :spawned | :idle | :moved | :ate | :reproduced
   @type t :: %__MODULE__{
           id: String.t(),
           kind: kind(),
@@ -16,7 +17,8 @@ defmodule Fishbowl.World.Entity do
           y: integer(),
           energy: float(),
           age: non_neg_integer(),
-          cooldown: non_neg_integer()
+          cooldown: non_neg_integer(),
+          action: action()
         }
 
   @species %{

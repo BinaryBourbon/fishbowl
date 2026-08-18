@@ -107,7 +107,8 @@ defmodule Fishbowl.World.Engine do
     end
   end
 
-  defp put_entity(state, entity), do: %{state | entities: Map.put(state.entities, entity.id, entity)}
+  defp put_entity(state, entity),
+    do: %{state | entities: Map.put(state.entities, entity.id, entity)}
 
   # --- Tick internals ---------------------------------------------------
 
@@ -124,7 +125,8 @@ defmodule Fishbowl.World.Engine do
     counts = species_counts(state.entities)
 
     Enum.reduce([:plant, :herbivore, :predator], state, fn kind, acc ->
-      if Map.get(counts, kind, 0) < @immigration_floor[kind] and :rand.uniform() < @immigration_chance do
+      if Map.get(counts, kind, 0) < @immigration_floor[kind] and
+           :rand.uniform() < @immigration_chance do
         case random_free_tile(acc, kind) do
           nil ->
             acc
@@ -197,7 +199,10 @@ defmodule Fishbowl.World.Engine do
 
         entity ->
           remaining = entity.energy - dmg
-          if remaining <= 0, do: Map.delete(acc, id), else: Map.put(acc, id, %{entity | energy: remaining})
+
+          if remaining <= 0,
+            do: Map.delete(acc, id),
+            else: Map.put(acc, id, %{entity | energy: remaining})
       end
     end)
   end
@@ -205,7 +210,12 @@ defmodule Fishbowl.World.Engine do
   defp step(%Entity{kind: :plant} = plant, state, _snapshot) do
     stats = Entity.species(:plant)
     fertility = fertility_at(state, plant.x, plant.y)
-    plant = %{plant | energy: min(stats.max_energy, plant.energy + stats.growth_per_tick * fertility)}
+
+    plant = %{
+      plant
+      | energy: min(stats.max_energy, plant.energy + stats.growth_per_tick * fertility),
+        action: :idle
+    }
 
     spawn =
       if plant.energy >= stats.reproduce_energy and plant.cooldown == 0 and
@@ -218,7 +228,10 @@ defmodule Fishbowl.World.Engine do
         []
       end
 
-    plant = if spawn == [], do: plant, else: %{plant | cooldown: stats.reproduce_cooldown}
+    plant =
+      if spawn == [],
+        do: plant,
+        else: %{plant | cooldown: stats.reproduce_cooldown, action: :reproduced}
 
     %{entity: plant, spawn: spawn, damage: []}
   end
@@ -240,18 +253,21 @@ defmodule Fishbowl.World.Engine do
     case nearest(snapshot, entity, prey_kind, stats.sight) do
       {prey_id, prey} when prey.x == entity.x and prey.y == entity.y ->
         gained = min(prey.energy, stats.bite)
-        entity = %{entity | energy: min(stats.max_energy, entity.energy + gained)}
+        entity = %{entity | energy: min(stats.max_energy, entity.energy + gained), action: :ate}
         finish(entity, state, stats, [{prey_id, stats.bite}])
 
       {_prey_id, prey} ->
         {x, y} = step_toward(state, entity.x, entity.y, prey.x, prey.y)
-        finish(%{entity | x: x, y: y}, state, stats, [])
+        finish(%{entity | x: x, y: y, action: moved_action(entity, x, y)}, state, stats, [])
 
       nil ->
         {x, y} = random_step(state, entity.x, entity.y)
-        finish(%{entity | x: x, y: y}, state, stats, [])
+        finish(%{entity | x: x, y: y, action: moved_action(entity, x, y)}, state, stats, [])
     end
   end
+
+  defp moved_action(entity, x, y) when entity.x == x and entity.y == y, do: :idle
+  defp moved_action(_entity, _x, _y), do: :moved
 
   defp finish(entity, state, stats, damage) do
     spawn =
@@ -268,7 +284,12 @@ defmodule Fishbowl.World.Engine do
       if spawn == [] do
         entity
       else
-        %{entity | energy: entity.energy * 0.5, cooldown: stats.reproduce_cooldown}
+        %{
+          entity
+          | energy: entity.energy * 0.5,
+            cooldown: stats.reproduce_cooldown,
+            action: :reproduced
+        }
       end
 
     %{entity: entity, spawn: spawn, damage: damage}

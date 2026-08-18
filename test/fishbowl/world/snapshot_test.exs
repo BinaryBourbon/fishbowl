@@ -4,7 +4,12 @@ defmodule Fishbowl.World.SnapshotTest do
   alias Fishbowl.World.{Engine, Snapshot}
 
   setup do
-    path = Path.join(System.tmp_dir!(), "fishbowl_snapshot_test_#{System.unique_integer([:positive])}.bin")
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "fishbowl_snapshot_test_#{System.unique_integer([:positive])}.bin"
+      )
+
     Application.put_env(:fishbowl, :snapshot_path, path)
 
     on_exit(fn ->

@@ -182,6 +182,17 @@ defmodule FishbowlWeb.WorldLive do
   defp emoji(:predator), do: "🦊"
   defp emoji(nil), do: ""
 
+  # What did the occupant do last tick? :idle gets no visual — everything
+  # else (spawned/moved/ate/reproduced) is rare enough per-entity that a
+  # badge stays informative instead of turning into background noise.
+  defp action_class(nil), do: ""
+  defp action_class(%{action: action}), do: "action-#{action}"
+
+  defp badge(%{action: :spawned}), do: "✨"
+  defp badge(%{action: :reproduced}), do: "💗"
+  defp badge(%{action: :ate}), do: "🍴"
+  defp badge(_), do: nil
+
   defp soil_color(fertility) do
     # Dry soil -> lush green as fertility rises from 0 to 1.
     green = trunc(70 + fertility * 110)
@@ -221,15 +232,22 @@ defmodule FishbowlWeb.WorldLive do
         </div>
       </header>
 
-      <div class="board" style={"grid-template-columns: repeat(#{@width}, 1fr); grid-template-rows: repeat(#{@height}, 1fr); aspect-ratio: #{@width} / #{@height};"}>
+      <div
+        class="board"
+        style={"grid-template-columns: repeat(#{@width}, 1fr); grid-template-rows: repeat(#{@height}, 1fr); aspect-ratio: #{@width} / #{@height};"}
+      >
         <div
           :for={cell <- @cells}
-          class={"cell #{cell.terrain} #{if @tool == :scoop and @scoop_from == {cell.x, cell.y}, do: "selected"}"}
+          class={"cell #{cell.terrain} #{action_class(cell.occupant)} #{if @tool == :scoop and @scoop_from == {cell.x, cell.y}, do: "selected"}"}
           style={"background:#{if cell.terrain == :rock, do: "#57534e", else: soil_color(cell.fertility)}; #{if cell.tint, do: "box-shadow: inset 0 0 0 2px #{cell.tint};"}"}
           phx-click="cell_click"
           phx-value-x={cell.x}
           phx-value-y={cell.y}
-        >{emoji(cell.occupant && cell.occupant.kind)}</div>
+        >
+          {emoji(cell.occupant && cell.occupant.kind)}<span :if={badge(cell.occupant)} class="badge">{badge(
+            cell.occupant
+          )}</span>
+        </div>
       </div>
 
       <footer class="stats">
