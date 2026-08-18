@@ -2,7 +2,7 @@ defmodule Fishbowl.World.Engine do
   @moduledoc """
   Pure functions over world state. No process, no I/O — easy to test and
   easy to reason about. `Fishbowl.World` (the GenServer) owns the state and
-  calls `tick/1` every 500ms.
+  calls `tick/1` on an interval (see `Fishbowl.World`'s `@tick_interval`).
 
   Each tick, every entity computes its next state from a single snapshot
   (so order of iteration never matters). Eating doesn't mutate the prey

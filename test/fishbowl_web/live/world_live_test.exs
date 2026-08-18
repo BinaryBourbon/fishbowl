@@ -43,7 +43,7 @@ defmodule FishbowlWeb.WorldLiveTest do
     view |> element(~s([phx-value-tool="herbivore"])) |> render_click()
     view |> element(~s([phx-value-x="15"][phx-value-y="15"])) |> render_click()
 
-    # Count only, not exact position: the world's own 500ms tick loop keeps
+    # Count only, not exact position: the world's own tick loop keeps
     # running during tests, and a released animal can wander off its spawn
     # tile before the assertion runs — that's expected simulation behavior,
     # not something to pin the test to.

@@ -14,7 +14,7 @@ defmodule Fishbowl.World do
 
   @width 60
   @height 40
-  @tick_interval 500
+  @tick_interval 1500
   @snapshot_every_ticks 20
   @topic "world"
 
