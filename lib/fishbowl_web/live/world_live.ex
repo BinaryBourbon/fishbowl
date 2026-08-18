@@ -301,9 +301,10 @@ defmodule FishbowlWeb.WorldLive do
       <div class="rules-col">
         <h2>The world</h2>
         <p>
-          A shared garden that ticks twice a second for everyone connected. Every tile is soil
-          with a <strong>fertility</strong> from 0 to 1 (darker = drier, greener = richer).
-          Fertility slowly dries out each tick unless someone waters it. Rocks are impassable —
+          A shared garden that ticks every 1.5 seconds for everyone connected. Every tile is
+          soil with a <strong>fertility</strong> from 0 to 1 (darker = drier, greener = richer).
+          Fertility slowly dries out each tick unless it gets watered — by you, or by 🌧️ rain,
+          which now and then soaks a small patch for a few ticks. Rocks are impassable —
           nothing can grow on or walk through them.
         </p>
         <p>
